@@ -3,7 +3,7 @@
 # Configuración
 SERVER_CONTAINER_NAME="server"
 CONFIG_FILE_PATH="./server/config.ini"
-MESSAGE="validar echo server"
+MESSAGE="validar"
 
 # Como el puerto puede variar lo leo directamente del config
 SERVER_PORT=$(grep "SERVER_PORT" $CONFIG_FILE_PATH | awk -F '=' '{print $2}' | xargs)
