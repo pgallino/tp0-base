@@ -4,9 +4,7 @@
 SERVER_CONTAINER_NAME="server"
 CONFIG_FILE_PATH="./server/config.ini"
 MESSAGE="validar echo server"
-
-# Como el puerto puede variar lo leo directamente del config
-SERVER_PORT=$(grep "SERVER_PORT" $CONFIG_FILE_PATH | awk -F '=' '{print $2}' | xargs)
+SERVER_PORT="12345"
 
 # Ejecuta netcat desde un contenedor temporal en la misma red
 RESPONSE=$(docker run --rm --network tp0_testing_net busybox sh -c "echo -n '$MESSAGE' | nc $SERVER_CONTAINER_NAME $SERVER_PORT")
