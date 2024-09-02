@@ -9,7 +9,7 @@ MESSAGE="validar echo server"
 SERVER_PORT=$(grep "SERVER_PORT" $CONFIG_FILE_PATH | awk -F '=' '{print $2}' | xargs)
 
 # Ejecuta netcat desde un contenedor temporal en la misma red
-RESPONSE=$(docker run --rm --network tp0_testing_net busybox:latest sh -c "echo -n '$MESSAGE' | nc -w 5 $SERVER_CONTAINER_NAME $SERVER_PORT")
+RESPONSE=$(docker run --rm --network tp0_testing_net busybox:latest sh -c "echo -n '$MESSAGE' | nc $SERVER_CONTAINER_NAME $SERVER_PORT")
 
 # Verifica si el mensaje recibido es igual al mensaje enviado
 if [ "$RESPONSE" = "$MESSAGE" ]; then
