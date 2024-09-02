@@ -12,6 +12,8 @@ def generar_docker_compose(nombre_archivo, cantidad_clientes):
         archivo.write("    container_name: server\n")
         archivo.write("    image: server:latest\n")
         archivo.write("    entrypoint: python3 /main.py\n")
+        archivo.write("    environment:\n")
+        archivo.write("      - PYTHONUNBUFFERED=1\n")
         archivo.write("    volumes:\n")
         archivo.write("      - ./server/config.ini:/config.ini\n")
         archivo.write("    networks:\n")
