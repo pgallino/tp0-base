@@ -12,7 +12,7 @@ SERVER_PORT=$(grep "SERVER_PORT" $CONFIG_FILE_PATH | awk -F '=' '{print $2}' | x
 RESPONSE=$(docker run --rm --network tp0_testing_net busybox sh -c "echo -n '$MESSAGE' | nc $SERVER_CONTAINER_NAME $SERVER_PORT")
 
 # Verifica si el mensaje recibido es igual al mensaje enviado
-if [ "$RESPONSE" == "$MESSAGE" ]; then
+if [ "$RESPONSE" = "$MESSAGE" ]; then
     echo "action: test_echo_server | result: success"
 else
     echo "action: test_echo_server | result: fail"
