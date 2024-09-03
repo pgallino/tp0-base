@@ -108,13 +108,13 @@ func (c *Client) StartClientLoop() {
 				return // terminar
 			}
 
+        	// Cerrar la conexión después de cada iteración
+			c.conn.Close()
+
 			log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
 				c.config.ID,
 				msg,
 			)
-
-			// Cerrar la conexión después de cada iteración
-			c.conn.Close()
 
 			// Wait a time between sending one message and the next one
 			time.Sleep(c.config.LoopPeriod)
