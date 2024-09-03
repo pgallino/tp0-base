@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 
 	"github.com/op/go-logging"
 )
@@ -23,6 +27,7 @@ type ClientConfig struct {
 type Client struct {
 	config ClientConfig
 	conn   net.Conn
+	on     bool
 }
 
 // NewClient Initializes a new client receiving the configuration
@@ -30,8 +35,28 @@ type Client struct {
 func NewClient(config ClientConfig) *Client {
 	client := &Client{
 		config: config,
+		on:     true,
 	}
+
+    sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+
+	client.setupSignalHandler()
+
 	return client
+}
+
+// setupSignalHandler Configura una rutina para manejar señales SIGTERM
+func (c *Client) setupSignalHandler() {
+	// Canal para recibir señales del sistema
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+
+	// Goroutine para manejar señales de manera graceful
+	go func() {
+		sig := <-sigChan
+		c.on = false // Cambiar `on` a false para indicar que el bucle debe terminar
+	}()
 }
 
 // CreateClientSocket Initializes client socket. In case of
@@ -55,24 +80,41 @@ func (c *Client) StartClientLoop() {
 	// There is an autoincremental msgID to identify every message sent
 	// Messages if the message amount threshold has not been surpassed
 	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
+
+	    if !c.on {
+			log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
+			break // Salir del bucle si se recibió una señal
+		}
+
 		// Create the connection the server in every loop iteration. Send an
-		c.createClientSocket()
+		err := c.createClientSocket()
+		if err != nil {
+			break
+			// si no me pude conectar salgo -> estaría bueno un numero de intentos
+		}
 
 		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
+		_, err := fmt.Fprintf(
 			c.conn,
 			"[CLIENT %v] Message N°%v\n",
 			c.config.ID,
 			msgID,
 		)
+
+        if err != nil {
+            log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            c.conn.Close() // Cerrar la conexión en caso de error
+            return
+        }
+
 		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		c.conn.Close()
 
 		if err != nil {
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 				c.config.ID,
 				err,
 			)
+            c.conn.Close()
 			return
 		}
 
@@ -80,6 +122,9 @@ func (c *Client) StartClientLoop() {
 			c.config.ID,
 			msg,
 		)
+
+    	// Cerrar la conexión después de cada iteración
+		c.conn.Close()
 
 		// Wait a time between sending one message and the next one
 		time.Sleep(c.config.LoopPeriod)
