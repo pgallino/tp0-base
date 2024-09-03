@@ -77,7 +77,7 @@ func (c *Client) StartClientLoop() {
 			err := c.createClientSocket()
 			if err != nil {
 				log.Errorf("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				continue // Si hay un error al conectar, intenta de nuevo en la siguiente iteración
+				break
 			}
 
 			// Verificar que c.conn no sea nil antes de usarla
