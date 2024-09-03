@@ -15,6 +15,7 @@ def generar_docker_compose(nombre_archivo, cantidad_clientes):
         archivo.write("    environment:\n")
         archivo.write("      - PYTHONUNBUFFERED=1\n")
         archivo.write("      - LOGGING_LEVEL=DEBUG\n")
+        archivo.write("      - SERVER_PORT=12345\n")
         archivo.write("    networks:\n")
         archivo.write("      - testing_net\n")
         archivo.write("\n")
