@@ -101,7 +101,6 @@ func (c *Client) StartClientLoop() {
 
         if err != nil {
             log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
-            c.conn.Close() // Cerrar la conexión en caso de error
             return
         }
 
@@ -112,7 +111,6 @@ func (c *Client) StartClientLoop() {
 				c.config.ID,
 				err,
 			)
-            c.conn.Close()
 			return
 		}
 
