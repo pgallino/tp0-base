@@ -88,6 +88,11 @@ func (c *Client) StartClientLoop() {
 		// Aseguramos que la conexión se cierre
 		defer c.conn.Close()
 
+        // Verificar si c.conn es nil antes de usarlo
+        if c.conn == nil {
+            log.Errorf("action: send_message | result: fail | client_id: %v | error: connection is nil", c.config.ID)
+            continue
+        }
 		_, err = fmt.Fprintf(
 			c.conn,
 			"[CLIENT %v] Message N°%v\n",
