@@ -65,8 +65,6 @@ func (c *Client) StartClientLoop() {
 	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
 		select {
 		case <-sigChan:
-			// Se recibió la senial SIGTERM, cerrar el cliente de manera graceful
-			log.Infof("action: exit | result: in_progress | client_id: %v", c.config.ID)
 			if c.conn != nil {
 				c.conn.Close()
 			}
