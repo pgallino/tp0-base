@@ -33,6 +33,7 @@ class Server:
                     break
                 else:
                     logging.error(f"action: main loop | result: fail | error: {e}")
+                    break
 
         logging.info('action: exit | result: success')
 
