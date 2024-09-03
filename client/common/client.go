@@ -75,13 +75,13 @@ func (c *Client) StartClientLoop() {
 			err := c.createClientSocket()
 			if err != nil {
 				log.Errorf("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				break
+				return
 			}
 
 			// Verificar que c.conn no sea nil antes de usarla
 			if c.conn == nil {
 				log.Errorf("action: send_message | result: fail | client_id: %v | error: connection is nil", c.config.ID)
-				break // terminar
+				return // terminar
 			}
 
 			// Enviar mensaje al servidor
@@ -94,7 +94,7 @@ func (c *Client) StartClientLoop() {
 
 			if err != nil {
 				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				break // terminar
+				return // terminar
 			}
 
 			// Leer respuesta del servidor
@@ -105,7 +105,7 @@ func (c *Client) StartClientLoop() {
 					c.config.ID,
 					err,
 				)
-				break // terminar
+				return // terminar
 			}
 
 			log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
