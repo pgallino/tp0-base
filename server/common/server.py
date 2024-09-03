@@ -34,8 +34,8 @@ class Server:
                 else:
                     logging.error(f"action: main loop | result: fail | error: {e}")
                     break
-
-        logging.info('action: exit | result: success')
+            finally:
+                ogging.info('action: exit | result: success')
 
     def __handle_client_connection(self, client_sock):
         """
