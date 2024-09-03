@@ -73,6 +73,6 @@ class Server:
     # agrego el handler de la signal
     def _graceful_shutdown(self, signum, frame):
 
-        logging.info('action: exit | result: in_progress')
+        logging.info('action: exit | result: success')
         self._on = False
         self._server_socket.close()
