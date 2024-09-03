@@ -34,8 +34,8 @@ class Server:
                 else:
                     logging.error(f"action: main loop | result: fail | error: {e}")
                     break
-            finally:
-                logging.info('action: exit | result: success')
+        
+        logging.info('action: exit | result: success')
 
     def __handle_client_connection(self, client_sock):
         """
@@ -73,6 +73,5 @@ class Server:
     # agrego el handler de la signal
     def _graceful_shutdown(self, signum, frame):
 
-        logging.info('action: exit | result: success')
         self._on = False
         self._server_socket.close()
