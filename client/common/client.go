@@ -8,17 +8,27 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"strconv"
 
 	"github.com/op/go-logging"
 )
 
 var log = logging.MustGetLogger("log")
 
+type Bet struct {
+	Agency    uint8
+	FirstName string
+	LastName  string
+	Document  uint32
+	Birthdate string // Formato: YYYY-MM-DD
+	Number    uint16
+}
+
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
 	ID            string
 	ServerAddress string
-	LoopAmount    int
+	LoopAmount    int // por ahora no las uso
 	LoopPeriod    time.Duration
 }
 
@@ -37,33 +47,13 @@ func NewClient(config ClientConfig) *Client {
 	return client
 }
 
-// CreateClientSocket Initializes client socket. In case of
-// failure, error is printed in stdout/stderr and exit 1
-// is returned
-func (c *Client) createClientSocket() error {
-	conn, err := net.Dial("tcp", c.config.ServerAddress)
-	if err != nil {
-		log.Criticalf(
-			"action: connect | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			err,
-		)
-		return err
-	}
-	c.conn = conn
-	return nil
-}
-
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
+// StartClient
+func (c *Client) StartClient() {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
 
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		select {
+	select {
 		case <-sigChan:
 			if c.conn != nil {
 				c.conn.Close()
@@ -71,54 +61,88 @@ func (c *Client) StartClientLoop() {
 			log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
 			return
 		default:
-			// Create the connection the server in every loop iteration. Send an
-			err := c.createClientSocket()
+			// Crear y establecer la conexión con el servidor
+			conn, err := c.CreateClientSocket()
 			if err != nil {
-				log.Errorf("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
+				log.Infof("action: connect | result: fail | client_id: %v | error: %v", c.Config.ID, err)
+				return
+			}
+			defer conn.Close()
+
+			// Leer apuesta desde las variables de entorno
+			bet, err := c.readBetFromEnv()
+			if err != nil {
+				log.Errorf("action: read_bet | result: fail | client_id: %v | error: %v", c.Config.ID, err)
 				return
 			}
 
-			// Verificar que c.conn no sea nil antes de usarla
-			if c.conn == nil {
-				log.Errorf("action: send_message | result: fail | client_id: %v | error: connection is nil", c.config.ID)
-				return // terminar
-			}
-
-			// Enviar mensaje al servidor
-			_, err = fmt.Fprintf(
-				c.conn,
-				"[CLIENT %v] Message N°%v\n",
-				c.config.ID,
-				msgID,
-			)
-
+			// Codificar la apuesta en un mensaje de bytes
+			message, err := EncodeBetMessage([]Bet{bet})
 			if err != nil {
-				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				return // terminar
+				log.Errorf("action: encode_message | result: fail | error: %v", err)
+				return
 			}
 
-			// Leer respuesta del servidor
-			msg, err := bufio.NewReader(c.conn).ReadString('\n')
-
+			// Enviar la apuesta al servidor usando la función SendMessage de socket_handler.go
+			err = SendMessage(conn, []Bet{bet})
 			if err != nil {
-				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-					c.config.ID,
-					err,
-				)
-				return // terminar
+				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.Config.ID, err)
+				return
 			}
 
-        	// Cerrar la conexión después de cada iteración
-			c.conn.Close()
+			// Recibir datos crudos de respuesta desde el servidor
+			response, err := ReceiveMessage(conn)
+			if err != nil {
+				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.Config.ID, err)
+				return
+			}
 
-			log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-				c.config.ID,
-				msg,
-			)
-
-			// Wait a time between sending one message and the next one
-			time.Sleep(c.config.LoopPeriod)
-		}
+			// Decodificar la respuesta de confirmación
+			success, err := DecodeConfirmationMessage(response)
+			if err != nil {
+				log.Errorf("action: decode_confirmation | result: fail | client_id: %v | error: %v", c.Config.ID, err)
+			} else if success {
+				log.Infof("action: apuesta_enviada | result: success | dni: %d | numero: %d", bet.Document, bet.Number)
+			} else {
+				log.Infof("action: apuesta_enviada | result: fail | dni: %d | numero: %d", bet.Document, bet.Number)
+			}
 	}
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+}
+
+// readBetFromEnv lee las variables de entorno para crear una estructura de apuesta
+func (c *Client) readBetFromEnv() (Bet, error) {
+	agencyStr := os.Getenv("AGENCIA")
+	firstName := os.Getenv("NOMBRE")
+	lastName := os.Getenv("APELLIDO")
+	documentStr := os.Getenv("DOCUMENTO")
+	birthdate := os.Getenv("NACIMIENTO")
+	numberStr := os.Getenv("NUMERO")
+
+	if agencyStr == "" || firstName == "" || lastName == "" || documentStr == "" || birthdate == "" || numberStr == "" {
+		return Bet{}, fmt.Errorf("faltan una o más variables de entorno necesarias")
+	}
+
+	agency, err := strconv.ParseUint(agencyStr, 10, 8)
+	if err != nil {
+		return Bet{}, fmt.Errorf("error al parsear el ID de la agencia: %v", err)
+	}
+
+	document, err := strconv.ParseUint(documentStr, 10, 32)
+	if err != nil {
+		return Bet{}, fmt.Errorf("error al parsear el documento: %v", err)
+	}
+
+	number, err := strconv.ParseUint(numberStr, 10, 16)
+	if err != nil {
+		return Bet{}, fmt.Errorf("error al parsear el número apostado: %v", err)
+	}
+
+	return Bet{
+		Agency:    uint8(agency),
+		FirstName: firstName,
+		LastName:  lastName,
+		Document:  uint32(document),
+		Birthdate: birthdate,
+		Number:    uint16(number),
+	}, nil
 }
