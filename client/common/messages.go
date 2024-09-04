@@ -105,19 +105,20 @@ func EncodeBetMessage(bets []Bet) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
-// DecodeConfirmationMessage decodifica una respuesta de confirmación del servidor
+// DecodeConfirmationMessage decodifica un mensaje de confirmación recibido desde el servidor
 func DecodeConfirmationMessage(data []byte) (bool, error) {
-	if len(data) < 4 {
-		return false, fmt.Errorf("mensaje de confirmación demasiado corto")
+	// Verificar que el mensaje tenga exactamente 2 bytes (tipo de mensaje + código de estado)
+	if len(data) != 2 {
+		return false, fmt.Errorf("mensaje de confirmación demasiado corto, longitud recibida: %d", len(data))
 	}
 
-	if data[2] == MSG_TYPE_CONFIRMACION {
-		if data[3] == 0x00 {
-			return true, nil // Confirmación exitosa
-		} else if data[3] == 0x01 {
-			return false, nil // Confirmación fallida
-		}
+	// Verificar que el tipo de mensaje sea el esperado (MSG_TYPE_CONFIRMACION)
+	if data[0] != MSG_TYPE_CONFIRMACION {
+		return false, fmt.Errorf("tipo de mensaje inesperado: %x", data[0])
 	}
 
-	return false, fmt.Errorf("mensaje de confirmación no reconocido")
+	// El segundo byte es el código de estado: 0x00 para éxito, 0x01 para error
+	success := data[1] == 0x00
+	return success, nil
 }
+

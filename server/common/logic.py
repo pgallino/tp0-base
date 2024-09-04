@@ -1,7 +1,7 @@
 # common/application/app_logic.py
 
 import logging
-from server.common.utils import Bet, store_bets, load_bets
+from common.utils import Bet, store_bets
 from common.messages import (
     decode_message,
     encode_confirmation_message

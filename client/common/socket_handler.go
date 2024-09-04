@@ -3,15 +3,16 @@ package common
 
 import (
 	"bufio"
-	"fmt"
 	"net"
+	"encoding/binary"
 )
 
 // CreateClientSocket initializes a client socket and connects to the server
-func CreateClientSocket() (net.Conn, error) {
-	conn, err := net.Dial("tcp", c.Config.ServerAddress)
+func CreateClientSocket(ServerAddress string) (net.Conn, error) {
+	conn, err := net.Dial("tcp", ServerAddress)
 	if err != nil {
-		return nil, fmt.Errorf("error al conectar con el servidor: %v", err)
+		log.Errorf("error al conectar con el servidor: %v", err)
+		return nil, err
 	}
 	return conn, nil
 }
@@ -23,7 +24,8 @@ func SendMessage(conn net.Conn, data []byte) error {
 	for totalSent < dataLen {
 		n, err := conn.Write(data[totalSent:])
 		if err != nil {
-			return fmt.Errorf("error al enviar datos al servidor: %v", err)
+			log.Errorf("error al enviar datos al servidor: %v", err)
+			return err
 		}
 		totalSent += n
 	}
@@ -40,24 +42,35 @@ func ReceiveMessage(conn net.Conn) ([]byte, error) {
 	for bytesRead < len(header) {
 		n, err := reader.Read(header[bytesRead:])
 		if err != nil {
-			return nil, fmt.Errorf("error al leer el encabezado del mensaje: %v", err)
+			log.Errorf("error al leer el encabezado del mensaje: %v", err)
+			return nil, err
 		}
 		bytesRead += n
 	}
+
+	// Imprimir el encabezado en formato hexadecimal
+	log.Infof("Encabezado recibido: %x", header)
 
 	// Decodificar la longitud total del mensaje (big-endian)
 	messageLength := int(binary.BigEndian.Uint16(header))
 
-	// Leer el resto del mensaje basado en la longitud especificada
-	data := make([]byte, messageLength)
+	// Imprimir la longitud total del mensaje
+	log.Infof("Longitud total del mensaje: %d", messageLength)
+
+	// Leer el resto del mensaje basado en la longitud especificada (messageLength - 2)
+	data := make([]byte, messageLength - 2)  // Ya hemos leído los primeros 2 bytes de la longitud
 	bytesRead = 0
-	for bytesRead < messageLength {
+	for bytesRead < len(data) {
 		n, err := reader.Read(data[bytesRead:])
 		if err != nil {
-			return nil, fmt.Errorf("error al leer el cuerpo del mensaje: %v", err)
+			log.Errorf("error al leer el cuerpo del mensaje: %v", err)
+			return nil, err
 		}
 		bytesRead += n
 	}
+
+	// Imprimir el cuerpo del mensaje en formato hexadecimal
+	log.Infof("Cuerpo del mensaje recibido: %x", data)
 
 	return data, nil
 }

@@ -2,7 +2,7 @@ import socket
 import logging
 import signal
 from common.socket_handler import recibir_mensaje, enviar_mensaje
-from server.common.logic import procesar_mensaje
+from common.logic import procesar_mensaje
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -11,6 +11,7 @@ class Server:
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self._on = True
+        self.agencias = 0
 
         signal.signal(signal.SIGTERM, self._graceful_shutdown)
 
@@ -62,6 +63,8 @@ class Server:
             logging.error(f"action: handle_client_connection | result: fail | error: {e}")
         finally:
             client_sock.close()
+            if self.agencias == 5:
+                self._on = False
             logging.info(f'action: close_connection | result: success | ip: {addr[0]}')
 
     def __accept_new_connection(self):
@@ -76,6 +79,7 @@ class Server:
         logging.info('action: accept_connections | result: in_progress')
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
+        self.agencias += 1
         return c
 
     # agrego el handler de la signal

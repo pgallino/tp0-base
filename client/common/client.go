@@ -1,7 +1,6 @@
 package common
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"os"
@@ -53,60 +52,71 @@ func (c *Client) StartClient() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
 
-	select {
-		case <-sigChan:
-			if c.conn != nil {
-				c.conn.Close()
-			}
-			log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
-			return
-		default:
-			// Crear y establecer la conexión con el servidor
-			conn, err := c.CreateClientSocket()
-			if err != nil {
-				log.Infof("action: connect | result: fail | client_id: %v | error: %v", c.Config.ID, err)
-				return
-			}
-			defer conn.Close()
-
-			// Leer apuesta desde las variables de entorno
-			bet, err := c.readBetFromEnv()
-			if err != nil {
-				log.Errorf("action: read_bet | result: fail | client_id: %v | error: %v", c.Config.ID, err)
-				return
-			}
-
-			// Codificar la apuesta en un mensaje de bytes
-			message, err := EncodeBetMessage([]Bet{bet})
-			if err != nil {
-				log.Errorf("action: encode_message | result: fail | error: %v", err)
-				return
-			}
-
-			// Enviar la apuesta al servidor usando la función SendMessage de socket_handler.go
-			err = SendMessage(conn, []Bet{bet})
-			if err != nil {
-				log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.Config.ID, err)
-				return
-			}
-
-			// Recibir datos crudos de respuesta desde el servidor
-			response, err := ReceiveMessage(conn)
-			if err != nil {
-				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.Config.ID, err)
-				return
-			}
-
-			// Decodificar la respuesta de confirmación
-			success, err := DecodeConfirmationMessage(response)
-			if err != nil {
-				log.Errorf("action: decode_confirmation | result: fail | client_id: %v | error: %v", c.Config.ID, err)
-			} else if success {
-				log.Infof("action: apuesta_enviada | result: success | dni: %d | numero: %d", bet.Document, bet.Number)
-			} else {
-				log.Infof("action: apuesta_enviada | result: fail | dni: %d | numero: %d", bet.Document, bet.Number)
-			}
+	// Crear y establecer la conexión con el servidor
+	conn, err := CreateClientSocket(c.config.ServerAddress)
+	if err != nil {
+		log.Infof("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
 	}
+	defer conn.Close()
+
+	// Leer apuesta desde las variables de entorno
+	bet, err := c.readBetFromEnv()
+	if err != nil {
+		log.Errorf("action: read_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+
+	// Imprimir la apuesta
+	log.Infof("Bet leída desde entorno: %+v", bet)
+
+	// Codificar la apuesta en un mensaje de bytes
+	message, err := EncodeBetMessage([]Bet{bet})
+	if err != nil {
+		log.Errorf("action: encode_message | result: fail | error: %v", err)
+		return
+	}
+
+	// Imprimir el mensaje en formato hexadecimal para mayor claridad
+	log.Infof("El mensaje codificado es: %x", message)
+
+	// Enviar la apuesta al servidor usando la función SendMessage de socket_handler.go
+	err = SendMessage(conn, message)
+	if err != nil {
+		log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+
+	log.Infof("envie la apuesta")
+
+	// Recibir datos crudos de respuesta desde el servidor
+	response, err := ReceiveMessage(conn)
+	if err != nil {
+		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+
+	log.Infof("El mensaje codificado 2 es: %x", response)
+
+	// Decodificar la respuesta de confirmación
+	success, err := DecodeConfirmationMessage(response)
+	if err != nil {
+		log.Errorf("action: decode_confirmation | result: fail | client_id: %v | error: %v", c.config.ID, err)
+	} else if success {
+		log.Infof("action: apuesta_enviada | result: success | dni: %d | numero: %d", bet.Document, bet.Number)
+	} else {
+		log.Infof("action: apuesta_enviada | result: fail | dni: %d | numero: %d", bet.Document, bet.Number)
+	}
+
+	select {
+	case sig := <-sigChan:
+		// Si recibimos SIGTERM, interrumpimos inmediatamente
+		log.Infof("Recibido %v, interrumpiendo la ejecución", sig)
+	default:
+		// Si no hay SIGTERM, simplemente terminamos normalmente
+		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)
+	}
+
 }
 
 // readBetFromEnv lee las variables de entorno para crear una estructura de apuesta

@@ -117,7 +117,9 @@ def decode_message(data):
     """
     Decodifica un mensaje recibido en su estructura de datos correspondiente.
     """
-    tipo_mensaje = struct.unpack('>HB', data[:3])
+
+    # El tipo de mensaje está en el tercer byte
+    tipo_mensaje = data[2]
 
     if tipo_mensaje == MSG_TYPE_APUESTA:
         return decode_bet_message(data[3:])

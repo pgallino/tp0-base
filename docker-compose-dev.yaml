@@ -1,4 +1,4 @@
-name: tp0
+version: '3'
 services:
   server:
     container_name: server
@@ -17,6 +17,88 @@ services:
     entrypoint: /client
     environment:
       - CLI_ID=1
+      - AGENCIA=1
+      - NOMBRE=Cliente1
+      - APELLIDO=Apellido1
+      - DOCUMENTO=30000001
+      - NACIMIENTO=1991-01-01
+      - NUMERO=1000
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    networks:
+      - testing_net
+    depends_on:
+      - server
+
+  client2:
+    container_name: client2
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=2
+      - AGENCIA=2
+      - NOMBRE=Cliente2
+      - APELLIDO=Apellido2
+      - DOCUMENTO=30000002
+      - NACIMIENTO=1992-01-01
+      - NUMERO=2000
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    networks:
+      - testing_net
+    depends_on:
+      - server
+
+  client3:
+    container_name: client3
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=3
+      - AGENCIA=3
+      - NOMBRE=Cliente3
+      - APELLIDO=Apellido3
+      - DOCUMENTO=30000003
+      - NACIMIENTO=1993-01-01
+      - NUMERO=3000
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    networks:
+      - testing_net
+    depends_on:
+      - server
+
+  client4:
+    container_name: client4
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=4
+      - AGENCIA=4
+      - NOMBRE=Cliente4
+      - APELLIDO=Apellido4
+      - DOCUMENTO=30000004
+      - NACIMIENTO=1994-01-01
+      - NUMERO=4000
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    networks:
+      - testing_net
+    depends_on:
+      - server
+
+  client5:
+    container_name: client5
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=5
+      - AGENCIA=5
+      - NOMBRE=Cliente5
+      - APELLIDO=Apellido5
+      - DOCUMENTO=30000005
+      - NACIMIENTO=1995-01-01
+      - NUMERO=5000
     volumes:
       - ./client/config.yaml:/config.yaml
     networks:

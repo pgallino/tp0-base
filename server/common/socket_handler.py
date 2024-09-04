@@ -1,5 +1,6 @@
 # communication/socket_handler.py
 
+import logging
 import socket
 import struct
 from common.messages import (
@@ -9,7 +10,7 @@ from common.messages import (
     encode_query_message,
     decode_message
 )
-from server.common.utils import Bet
+from common.utils import Bet
 
 def recibir_mensaje(sock):
     """
@@ -20,12 +21,15 @@ def recibir_mensaje(sock):
         raise ValueError("No se pudo leer el encabezado del mensaje.")
     
     total_length = struct.unpack('>H', header)[0]
+    logging.debug(f"Encabezado recibido: {header.hex()} (longitud total del mensaje: {total_length} bytes)")
     data = receive_exactly(sock, total_length - 2)
     
     if not data:
         raise ValueError("No se pudo leer los datos del mensaje.")
     
-    return data
+    logging.debug(f"Datos recibidos: {data.hex()}")
+    
+    return header + data
 
 def receive_exactly(sock, length):
     """
@@ -46,9 +50,10 @@ def enviar_mensaje(sock, message):
     try:
         sock.sendall(message)
     except socket.error as e:
-        print(f"Error al enviar el mensaje: {e}")
+        logging.error(f"Error al enviar el mensaje: {e}")
         raise
-
+    
+    logging.debug(f"Envio mensaje al cliente: {message}")
 def enviar_apuestas(sock, bets):
     """
     Codifica y envía un mensaje de apuestas.
