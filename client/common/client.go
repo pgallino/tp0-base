@@ -55,7 +55,7 @@ func (c *Client) StartClient() {
 	// Crear y establecer la conexión con el servidor
 	conn, err := CreateClientSocket(c.config.ServerAddress)
 	if err != nil {
-		log.Infof("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		log.Errorf("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return
 	}
 	defer conn.Close()
@@ -67,9 +67,6 @@ func (c *Client) StartClient() {
 		return
 	}
 
-	// Imprimir la apuesta
-	log.Infof("Bet leída desde entorno: %+v", bet)
-
 	// Codificar la apuesta en un mensaje de bytes
 	message, err := EncodeBetMessage([]Bet{bet})
 	if err != nil {
@@ -77,17 +74,15 @@ func (c *Client) StartClient() {
 		return
 	}
 
-	// Imprimir el mensaje en formato hexadecimal para mayor claridad
-	log.Infof("El mensaje codificado es: %x", message)
-
-	// Enviar la apuesta al servidor usando la función SendMessage de socket_handler.go
+	// Enviar la apuesta al servidor
 	err = SendMessage(conn, message)
+
 	if err != nil {
 		log.Errorf("action: send_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return
 	}
 
-	log.Infof("envie la apuesta")
+	log.Infof("action: send_message | result: success | client_id: %v", c.config.ID)
 
 	// Recibir datos crudos de respuesta desde el servidor
 	response, err := ReceiveMessage(conn)
@@ -96,7 +91,7 @@ func (c *Client) StartClient() {
 		return
 	}
 
-	log.Infof("El mensaje codificado 2 es: %x", response)
+	log.Infof("action: recv_message | result: success | client_id: %v", c.config.ID)
 
 	// Decodificar la respuesta de confirmación
 	success, err := DecodeConfirmationMessage(response)
@@ -109,9 +104,9 @@ func (c *Client) StartClient() {
 	}
 
 	select {
-	case sig := <-sigChan:
+	case <-sigChan:
 		// Si recibimos SIGTERM, interrumpimos inmediatamente
-		log.Infof("Recibido %v, interrumpiendo la ejecución", sig)
+		log.Infof("action: exit by SIGTERM | result: success | client_id: %v", c.config.ID)
 	default:
 		// Si no hay SIGTERM, simplemente terminamos normalmente
 		log.Infof("action: exit | result: success | client_id: %v", c.config.ID)

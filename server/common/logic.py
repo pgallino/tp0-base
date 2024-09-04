@@ -23,18 +23,6 @@ def procesar_mensaje(data):
             response = encode_confirmation_message(success=True)
             return response
 
-        elif decoded_message.get("tipo") == "confirmacion":
-            pass
-            return None
-
-        elif decoded_message.get("tipo") == "finalizacion":
-            pass
-            return None
-
-        elif decoded_message.get("tipo") == "consulta":
-            pass
-            return None
-
         else:
             # Tipo de mensaje desconocido
             logging.error("action: procesar_mensaje | result: fail | error: Tipo de mensaje desconocido")

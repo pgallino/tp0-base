@@ -1,8 +1,10 @@
 import socket
 import logging
 import signal
-from common.socket_handler import recibir_mensaje, enviar_mensaje
+from common.socket_handler import recv_msg, send_msg
 from common.logic import procesar_mensaje
+
+MAX_CLIENTS = 5
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -24,8 +26,6 @@ class Server:
         finishes, servers starts to accept new connections again
         """
 
-        # TODO: Modify this program to handle signal to graceful shutdown
-        # the server
         while self._on:
             try:
                 client_sock = self.__accept_new_connection()
@@ -36,7 +36,8 @@ class Server:
                 else:
                     logging.error(f"action: main loop | result: fail | error: {e}")
                     break
-        
+        if self._server_socket.fileno() != -1:
+            self._server_socket.close()
         logging.info('action: exit | result: success')
 
     def __handle_client_connection(self, client_sock):
@@ -47,23 +48,25 @@ class Server:
         también se cerrará.
         """
         try:
-            # Recibir y manejar el mensaje usando funciones robustas
-            data = recibir_mensaje(client_sock)
+            # Recibir mensaje
+            data = recv_msg(client_sock)
             addr = client_sock.getpeername()
             logging.info(f'action: receive_message | result: success | ip: {addr[0]}')
 
             # Procesar el mensaje recibido
             response = procesar_mensaje(data)
 
-            # Enviar una respuesta si es necesario
-            if response:
-                enviar_mensaje(client_sock, response)
+            # Enviar una respuesta (confirmación)
+            if response: send_msg(client_sock, response)
 
         except Exception as e:
             logging.error(f"action: handle_client_connection | result: fail | error: {e}")
         finally:
-            client_sock.close()
-            if self.agencias == 5:
+            if client_sock.fileno() != -1:
+                client_sock.close()
+            # Le pongo el tope para que cierre después de atender a los 5 clientes
+            # TODO hacer configurable la cantidad de clientes
+            if self.agencias == MAX_CLIENTS:
                 self._on = False
             logging.info(f'action: close_connection | result: success | ip: {addr[0]}')
 
@@ -86,4 +89,3 @@ class Server:
     def _graceful_shutdown(self, signum, frame):
 
         self._on = False
-        self._server_socket.close()

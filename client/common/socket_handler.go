@@ -48,17 +48,11 @@ func ReceiveMessage(conn net.Conn) ([]byte, error) {
 		bytesRead += n
 	}
 
-	// Imprimir el encabezado en formato hexadecimal
-	log.Infof("Encabezado recibido: %x", header)
-
 	// Decodificar la longitud total del mensaje (big-endian)
 	messageLength := int(binary.BigEndian.Uint16(header))
 
-	// Imprimir la longitud total del mensaje
-	log.Infof("Longitud total del mensaje: %d", messageLength)
-
 	// Leer el resto del mensaje basado en la longitud especificada (messageLength - 2)
-	data := make([]byte, messageLength - 2)  // Ya hemos leído los primeros 2 bytes de la longitud
+	data := make([]byte, messageLength - 2)
 	bytesRead = 0
 	for bytesRead < len(data) {
 		n, err := reader.Read(data[bytesRead:])
@@ -68,9 +62,6 @@ func ReceiveMessage(conn net.Conn) ([]byte, error) {
 		}
 		bytesRead += n
 	}
-
-	// Imprimir el cuerpo del mensaje en formato hexadecimal
-	log.Infof("Cuerpo del mensaje recibido: %x", data)
 
 	return data, nil
 }

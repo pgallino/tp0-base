@@ -7,7 +7,7 @@ import (
 	"fmt"
 )
 
-// # Estructura de los paquetes
+// # Estructura de los paquetes -> pensado para ej 5 y 6
 // # =========================================
 // # 1. Paquete de Apuesta (MSG_TYPE_APUESTA = 0x01)
 // # -----------------------------------------
@@ -37,12 +37,10 @@ const (
 	MSG_TYPE_CONFIRMACION = 0x02
 )
 
-// EncodeBetMessage codifica una apuesta en un formato binario para enviar al servidor
 func EncodeBetMessage(bets []Bet) ([]byte, error) {
 	buffer := new(bytes.Buffer)
 
 	// Calcular longitud total del mensaje
-	// 4 bytes para el encabezado (longitud, tipo de mensaje, cantidad de apuestas)
 	totalLength := 4
 	for _, bet := range bets {
 		totalLength += 1 + 1 + len(bet.FirstName) + 1 + len(bet.LastName) + 4 + 10 + 2
@@ -50,55 +48,99 @@ func EncodeBetMessage(bets []Bet) ([]byte, error) {
 
 	// Escribir longitud total del mensaje
 	if err := binary.Write(buffer, binary.BigEndian, uint16(totalLength)); err != nil {
-		return nil, fmt.Errorf("error al escribir la longitud del mensaje: %v", err)
+		log.Errorf(
+			"action: write_total_length | result: fail | error: %v",
+			err,
+		)
+		return nil, err
 	}
 
 	// Escribir tipo de mensaje (MSG_TYPE_APUESTA)
 	if err := buffer.WriteByte(MSG_TYPE_APUESTA); err != nil {
-		return nil, fmt.Errorf("error al escribir el tipo de mensaje: %v", err)
+		log.Errorf(
+			"action: write_message_type | result: fail | error: %v",
+			err,
+		)
+		return nil, err
 	}
 
 	// Escribir cantidad de apuestas en el batch
 	if err := buffer.WriteByte(uint8(len(bets))); err != nil {
-		return nil, fmt.Errorf("error al escribir la cantidad de apuestas: %v", err)
+		log.Errorf(
+			"action: write_bet_count | result: fail | error: %v",
+			err,
+		)
+		return nil, err
 	}
 
 	// Codificar cada apuesta
 	for _, bet := range bets {
 		// Escribir agencia
 		if err := buffer.WriteByte(bet.Agency); err != nil {
-			return nil, fmt.Errorf("error al escribir la agencia: %v", err)
+			log.Errorf(
+				"action: write_agency | result: fail | error: %v",
+				err,
+			)
+			return nil, err
 		}
 
 		// Escribir longitud y nombre
 		if err := buffer.WriteByte(uint8(len(bet.FirstName))); err != nil {
-			return nil, fmt.Errorf("error al escribir la longitud del nombre: %v", err)
+			log.Errorf(
+				"action: write_first_name_length | result: fail | error: %v",
+				err,
+			)
+			return nil, err
 		}
 		if _, err := buffer.WriteString(bet.FirstName); err != nil {
-			return nil, fmt.Errorf("error al escribir el nombre: %v", err)
+			log.Errorf(
+				"action: write_first_name | result: fail | error: %v",
+				err,
+			)
+			return nil, err
 		}
 
 		// Escribir longitud y apellido
 		if err := buffer.WriteByte(uint8(len(bet.LastName))); err != nil {
-			return nil, fmt.Errorf("error al escribir la longitud del apellido: %v", err)
+			log.Errorf(
+				"action: write_last_name_length | result: fail | error: %v",
+				err,
+			)
+			return nil, err
 		}
 		if _, err := buffer.WriteString(bet.LastName); err != nil {
-			return nil, fmt.Errorf("error al escribir el apellido: %v", err)
+			log.Errorf(
+				"action: write_last_name | result: fail | error: %v",
+				err,
+			)
+			return nil, err
 		}
 
 		// Escribir DNI
 		if err := binary.Write(buffer, binary.BigEndian, bet.Document); err != nil {
-			return nil, fmt.Errorf("error al escribir el DNI: %v", err)
+			log.Errorf(
+				"action: write_dni | result: fail | error: %v",
+				err,
+			)
+			return nil, err
 		}
 
 		// Escribir fecha de nacimiento
 		if _, err := buffer.WriteString(bet.Birthdate); err != nil {
-			return nil, fmt.Errorf("error al escribir la fecha de nacimiento: %v", err)
+			log.Errorf(
+				"action: write_birthdate | result: fail | error: %v",
+				err,
+			)
+			return nil, err
 		}
 
 		// Escribir número apostado
 		if err := binary.Write(buffer, binary.BigEndian, bet.Number); err != nil {
-			return nil, fmt.Errorf("error al escribir el número apostado: %v", err)
+			log.Errorf(
+				"action: write_bet_number | result: fail | error: %v",
+				err,
+			)
+			return nil, err
 		}
 	}
 
@@ -109,16 +151,25 @@ func EncodeBetMessage(bets []Bet) ([]byte, error) {
 func DecodeConfirmationMessage(data []byte) (bool, error) {
 	// Verificar que el mensaje tenga exactamente 2 bytes (tipo de mensaje + código de estado)
 	if len(data) != 2 {
-		return false, fmt.Errorf("mensaje de confirmación demasiado corto, longitud recibida: %d", len(data))
+		log.Errorf(
+			"action: decode_confirmation | result: fail | reason: message too short | length_received: %d",
+			len(data),
+		)
+		return false, fmt.Errorf("action: decode_confirmation | result: fail | reason: message too short | length_received: %d",
+			len(data))
 	}
 
 	// Verificar que el tipo de mensaje sea el esperado (MSG_TYPE_CONFIRMACION)
 	if data[0] != MSG_TYPE_CONFIRMACION {
-		return false, fmt.Errorf("tipo de mensaje inesperado: %x", data[0])
+		log.Errorf(
+			"action: decode_confirmation | result: fail | reason: unexpected message type | message_type: %x",
+			data[0],
+		)
+		return false, fmt.Errorf("action: decode_confirmation | result: fail | reason: unexpected message type | message_type: %x",
+			data[0])
 	}
 
 	// El segundo byte es el código de estado: 0x00 para éxito, 0x01 para error
 	success := data[1] == 0x00
 	return success, nil
 }
-
