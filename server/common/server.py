@@ -1,7 +1,8 @@
 import socket
 import logging
 import signal
-import sys
+from common.socket_handler import recibir_mensaje, enviar_mensaje
+from server.common.logic import procesar_mensaje
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -39,22 +40,29 @@ class Server:
 
     def __handle_client_connection(self, client_sock):
         """
-        Read message from a specific client socket and closes the socket
+        Lee un mensaje de un socket de cliente específico y cierra el socket.
 
-        If a problem arises in the communication with the client, the
-        client socket will also be closed
+        Si surge un problema en la comunicación con el cliente, el socket del cliente
+        también se cerrará.
         """
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
+            # Recibir y manejar el mensaje usando funciones robustas
+            data = recibir_mensaje(client_sock)
             addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
-        except OSError as e:
-            logging.error("action: receive_message | result: fail | error: {e}")
+            logging.info(f'action: receive_message | result: success | ip: {addr[0]}')
+
+            # Procesar el mensaje recibido
+            response = procesar_mensaje(data)
+
+            # Enviar una respuesta si es necesario
+            if response:
+                enviar_mensaje(client_sock, response)
+
+        except Exception as e:
+            logging.error(f"action: handle_client_connection | result: fail | error: {e}")
         finally:
             client_sock.close()
+            logging.info(f'action: close_connection | result: success | ip: {addr[0]}')
 
     def __accept_new_connection(self):
         """
