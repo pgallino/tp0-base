@@ -3,9 +3,6 @@ import logging
 import signal
 import multiprocessing
 from common.client_process import AgencyProcess
-from common.messages import (
-    encode_winners_message
-)
 from common.utils import load_bets, has_won
 
 MAX_CLIENTS = 5

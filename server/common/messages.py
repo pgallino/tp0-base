@@ -149,7 +149,7 @@ def encode_winners_message(winners):
 
 
 # Decodificadores
-# =========================================
+# ========================================= #
 
 def decode_message(data):
     """
