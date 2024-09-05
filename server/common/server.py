@@ -16,13 +16,14 @@ class Server:
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self._on = True
-        self.agencias = 0
+        self.agencias = 0 # conteo de agencias registradas
         self._client_processes = []  # Lista para almacenar los procesos de las agencias
         self.store_lock = multiprocessing.Lock()  # Lock para almacenar apuestas
         self.pipes = []  # Lista para almacenar los extremos de las pipes (canales)
-        self.notif_queue = multiprocessing.Queue()
+        self.notif_queue = multiprocessing.Queue() # cola para 
         self.conexiones_por_agencia = {}
 
+        # Catcheo de signal
         signal.signal(signal.SIGTERM, self._graceful_shutdown)
 
     def run(self):
@@ -30,8 +31,9 @@ class Server:
         try:
             while self._on:
                 client_sock = self.__accept_new_connection()
+
+                # Crear y lanzar un AgencyProcess por cada conexión de cliente
                 if client_sock:
-                    # Crear y lanzar un AgencyProcess por cada conexión de cliente
 
                     # Crear una pipe para la comunicación
                     parent_conn, child_conn = multiprocessing.Pipe()
@@ -46,86 +48,86 @@ class Server:
                     self.pipes.append(parent_conn)
                     self.agencias += 1
 
-                # Si llegamos a la cantidad máxima de clientes, espero las notif y hago el sorteo
-                if self.agencias == MAX_CLIENTS:
-                    logging.info(f"Esperando a que los {MAX_CLIENTS} clientes notifiquen...")
+                # Si llego a la cantidad máxima de clientes, espero las notificaciones de finalización y hago el sorteo
+                if self.agencias >= MAX_CLIENTS:
 
-                    self._receive_from_queue()  # Recibir los IDs de los procesos
-                    self._realizar_sorteo_y_enviar_resultados()
+                    self._receive_from_queue()  # Recibir las notificaciones de los procesos
 
-        except KeyboardInterrupt:
-            logging.info("Apagando servidor...")
-            self._cleanup()
+                    ganadores = self._realizar_sorteo() # Una vez recibidos las notificaciones realizo el sorteo
+                    
+                    self._registrar_ganadores(ganadores) # Comunico a los procesos agency los ganadores
+
         finally:
             self._shutdown()
 
+    def __accept_new_connection(self):
+        """Acepta conexiones entrantes"""
+
+        client_sock, addr = self._server_socket.accept()
+        logging.info(f"Conexión aceptada desde {addr[0]}:{addr[1]}")
+        return client_sock
+
     def _receive_from_queue(self):
-        """Recibe los IDs enviados por los procesos a través de la cola."""
+        """Recibe la notificación de las agencias por la cola bloqueante"""
+
+        logging.info(f"action: waiting notif | result: success | msg: esperando notificaciones")
         notificaciones = 0
         while notificaciones < MAX_CLIENTS:
-            agency_id = self.notif_queue.get()  # Esperar a recibir el ID
-            logging.info(f"Agencia {agency_id} registrada con éxito.")
+            agency_id = self.notif_queue.get()  # Esperar a recibir notificacion
+            logging.info(f"action: notified | result: success | msg: {agency_id} me notificó que terminó.")
             notificaciones += 1
-
-    def _realizar_sorteo_y_enviar_resultados(self):
-        """
-        Realiza el sorteo y luego envía los resultados a todos los clientes.
-        """
-        ganadores = self._realizar_sorteo()
-
-        for pipe in self.pipes:
-            # Convertir los ganadores a una cadena
-            serialized_data = str(ganadores)
-            
-            data_length = f"{len(serialized_data):010d}"  # Convertir el tamaño a una cadena de 10 dígitos
-
-            # Enviar primero el tamaño del mensaje
-            logging.info(f"Enviando longitud de datos: {data_length}\n\n")
-            pipe.send_bytes(data_length.encode("utf-8"))  # Enviar el tamaño como una cadena de longitud fija
-
-            # Luego, enviar los datos
-            logging.info(f"Enviando datos por el pipe...\n\n")
-            pipe.send_bytes(serialized_data.encode("utf-8"))  # Asegurarse de que todos los datos sean enviados
-
-            logging.info(f"Envio de datos completado: {data_length}\n\n")
-
-        self._on = False
 
     def _realizar_sorteo(self):
         """
         Realiza el sorteo y guarda los ganadores por agencia.
         """
 
+        logging.info("action: sorteo | result: in_progress...")
+
         ganadores_por_agencia = {}
-        todas_las_apuestas = load_bets()
-        for bet in todas_las_apuestas:
+
+        # no uso mutex porque solo ingresa este proceso luego de que ya haya sido usado por todos (podria usar el mismo lock por seguridad)
+        apuestas_totales = load_bets()
+        for bet in apuestas_totales:
             if has_won(bet):
                 if bet.agency not in ganadores_por_agencia:
                     ganadores_por_agencia[bet.agency] = []
                 ganadores_por_agencia[bet.agency].append(bet.document)
-        logging.info("Sorteo realizado exitosamente.")
 
-        logging.info(f"Ganadores: {ganadores_por_agencia}\n\n")
+        logging.info(f"action: sorteo | result: succes | ganadores: {ganadores_por_agencia}")
+
         return ganadores_por_agencia
 
+    def _registrar_ganadores(self, ganadores):
+        """
+        envia vía pipes los resultados a todos los procesos agency.
+        """
+
+        for pipe in self.pipes:
+            # Convertir los ganadores a una cadena
+            serialized_data = str(ganadores)
+            
+            #TODO modificar para que no tengan que ser 10 digitos -> mucho espacio
+            data_length = f"{len(serialized_data):010d}"  # Convertir el tamaño a una cadena de 10 dígitos
+
+            # Enviar tamaño del mensaje
+            pipe.send_bytes(data_length.encode("utf-8"))  # Enviar el tamaño como una cadena de longitud fija
+
+            # Enviar los datos
+            pipe.send_bytes(serialized_data.encode("utf-8"))  # Asegurarse de que todos los datos sean enviados
+        
+        self._on = False # cierro server
+
     def _graceful_shutdown(self, signum, frame):
-        logging.info("Apagando servidor de manera controlada...")
+        logging.info("action: shutdown | result: success")
         self._on = False
-        self._cleanup()
-
-    def _cleanup(self):
-        logging.info("Cerrando todas las conexiones...")
-        for thread in self._client_threads:
-            thread.join()  # Asegurarse de que todos los hilos de los clientes terminen
-        self._server_socket.close()
-
-    def __accept_new_connection(self):
-        client_sock, addr = self._server_socket.accept()
-        logging.info(f"Conexión aceptada desde {addr[0]}:{addr[1]}")
-        return client_sock
 
     def _shutdown(self):
-        logging.info("Apagando el servidor...")
         for process in self._client_processes:
             process.join()
+
+        for pipe in self.pipes:
+            pipe.close()
+        
         self._server_socket.close()
+        logging.info("action: exit | result: success")
