@@ -1,6 +1,7 @@
 import socket
 import logging
 import signal
+import time
 import multiprocessing
 from common.client_process import AgencyProcess
 from common.utils import load_bets, has_won
@@ -24,6 +25,7 @@ class Server:
         signal.signal(signal.SIGTERM, self._graceful_shutdown)
 
     def run(self):
+        start_time = time.time()
         logging.info("Servidor corriendo...")
         try:
             while self._on:
@@ -56,6 +58,9 @@ class Server:
 
         finally:
             self._shutdown()
+            elapsed_time = time.time() - start_time
+            logging.info(f"TIEMPO FINAL: {elapsed_time:.2f} segundos")
+
 
     def __accept_new_connection(self):
         """Acepta conexiones entrantes"""
