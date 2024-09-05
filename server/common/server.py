@@ -1,9 +1,9 @@
 import socket
 import logging
 import signal
-import threading
+import multiprocessing
 import time
-from common.logic import AgencyThread
+from common.logic import AgencyProcess
 from common.messages import (
     encode_winners_message
 )
@@ -18,13 +18,11 @@ class Server:
         self._server_socket.listen(listen_backlog)
         self._on = True
         self.agencias = 0
-        self._client_threads = []  # Lista para almacenar los hilos de las agencias
-        self.store_lock = threading.Lock()  # Lock para almacenar apuestas
-        self.barrier = threading.Barrier(MAX_CLIENTS + 1)  # Barrera para sincronizar los hilos de agencias y el hilo principal
-        self.sorteo_realizado = False
-        self.ganadores_por_agencia = {}
+        self._client_processes = []  # Lista para almacenar los hilos de las agencias
+        self.store_lock = multiprocessing.Lock()  # Lock para almacenar apuestas
+        self.pipes = []  # Lista para almacenar los extremos de las pipes (canales)
+        self.notif_queue = multiprocessing.Queue()
         self.conexiones_por_agencia = {}
-        self.conexiones_lock = threading.Lock()
 
         signal.signal(signal.SIGTERM, self._graceful_shutdown)
 
@@ -34,59 +32,67 @@ class Server:
             while self._on:
                 client_sock = self.__accept_new_connection()
                 if client_sock:
-                    # Crear y lanzar un AgencyThread por cada conexión de cliente
-                    client_thread = AgencyThread(
-                        agency_socket=client_sock,
-                        store_lock=self.store_lock,
-                        barrier=self.barrier,
-                        conexiones_por_agencia=self.conexiones_por_agencia,
-                        conexiones_lock=self.conexiones_lock
-                    )
-                    client_thread.start()
-                    self._client_threads.append(client_thread)
+                    # Crear y lanzar un AgencyProcess por cada conexión de cliente
 
-                # Si llegamos a la cantidad máxima de clientes, el hilo principal espera en la barrera
-                if len(self._client_threads) == MAX_CLIENTS:
+                    # Crear una pipe para la comunicación
+                    parent_conn, child_conn = multiprocessing.Pipe()
+
+                    client_process = multiprocessing.Process(
+                    target=AgencyProcess,
+                    args=(client_sock, self.store_lock, self.notif_queue, child_conn)
+                    )
+
+                    client_process.start()
+                    self._client_processes.append(client_process)
+                    self.pipes.append(parent_conn)
+                    self.agencias += 1
+
+                # Si llegamos a la cantidad máxima de clientes, espero las notif y hago el sorteo
+                if self.agencias == MAX_CLIENTS:
                     logging.info(f"Esperando a que los {MAX_CLIENTS} clientes notifiquen...")
-                    self.barrier.wait()  # Hilo principal espera hasta que todos los hilos lleguen aquí
-                    logging.info(f"SALI DE LA BARRERA...")
-                    time.sleep(5)
+
+                    self._receive_from_queue()  # Recibir los IDs de los procesos
                     self._realizar_sorteo_y_enviar_resultados()
 
         except KeyboardInterrupt:
             logging.info("Apagando servidor...")
             self._cleanup()
+        finally:
+            self._shutdown()
+
+    def _receive_from_queue(self):
+        """Recibe los IDs enviados por los procesos a través de la cola."""
+        notificaciones = 0
+        while notificaciones < MAX_CLIENTS:
+            agency_id = self.notif_queue.get()  # Esperar a recibir el ID
+            logging.info(f"Agencia {agency_id} registrada con éxito.")
+            notificaciones += 1
 
     def _realizar_sorteo_y_enviar_resultados(self):
         """
         Realiza el sorteo y luego envía los resultados a todos los clientes.
         """
-        self._realizar_sorteo()
-        for agency_id, conn in self.conexiones_por_agencia.items():
-            self._enviar_resultados(conn, agency_id)
+        ganadores = self._realizar_sorteo()
+        for pipe in self.pipes:
+            pipe.send(ganadores)
         self._on = False
 
     def _realizar_sorteo(self):
         """
         Realiza el sorteo y guarda los ganadores por agencia.
         """
+
+        ganadores_por_agencia = {}
         todas_las_apuestas = load_bets()
         for bet in todas_las_apuestas:
             if has_won(bet):
-                if bet.agency not in self.ganadores_por_agencia:
-                    self.ganadores_por_agencia[bet.agency] = []
-                self.ganadores_por_agencia[bet.agency].append(bet.document)
+                if bet.agency not in ganadores_por_agencia:
+                    ganadores_por_agencia[bet.agency] = []
+                ganadores_por_agencia[bet.agency].append(bet.document)
         logging.info("Sorteo realizado exitosamente.")
-        self.sorteo_realizado = True
 
-    def _enviar_resultados(self, client_sock, agency_id):
-        """
-        Envía los resultados del sorteo al cliente.
-        """
-        ganadores = self.ganadores_por_agencia.get(agency_id, [])
-        response = encode_winners_message(ganadores)
-        client_sock.send(response)
-        logging.info(f"Resultados enviados a la agencia {agency_id}.")
+        logging.info(f"Ganadores: {ganadores_por_agencia}\n\n")
+        return ganadores_por_agencia
 
     def _graceful_shutdown(self, signum, frame):
         logging.info("Apagando servidor de manera controlada...")
@@ -103,3 +109,9 @@ class Server:
         client_sock, addr = self._server_socket.accept()
         logging.info(f"Conexión aceptada desde {addr[0]}:{addr[1]}")
         return client_sock
+
+    def _shutdown(self):
+        logging.info("Apagando el servidor...")
+        for process in self._client_processes:
+            process.join()
+        self._server_socket.close()
