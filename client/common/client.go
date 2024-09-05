@@ -39,6 +39,7 @@ type ClientConfig struct {
 type Client struct {
 	config ClientConfig
 	conn   net.Conn
+	agency uint8
 }
 
 // NewClient Initializes a new client receiving the configuration
@@ -69,6 +70,20 @@ func (c *Client) StartClient() {
 		log.Errorf("action: send_bets | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return
 	}
+
+    // Notificar finalización de apuestas
+    err = c.notifyFinalization(conn)
+    if err != nil {
+        log.Errorf("action: notify_end | result: fail | client_id: %v | error: %v", c.config.ID, err)
+        return
+    }
+
+    // Consultar lista de ganadores
+    err = c.consultWinners(conn)
+    if err != nil {
+        log.Errorf("action: consult_winners | result: fail | client_id: %v | error: %v", c.config.ID, err)
+        return
+    }
 
 	select {
 	case <-sigChan:
@@ -108,6 +123,12 @@ func (c *Client) readAndSendBets(conn net.Conn) error {
 	// Restar los primeros 4 bytes del encabezado
 	bytesRestantes := limitBytes - 4
 
+	agency, err := strconv.ParseUint(agencyIDStr, 10, 8)
+	if err != nil {
+		return fmt.Errorf("error al parsear AGENCIA: %v", err)
+	}
+	c.agency = uint8(agency)
+
 	for {
 		// Leer una fila del CSV
 		row, err := reader.Read()
@@ -115,11 +136,6 @@ func (c *Client) readAndSendBets(conn net.Conn) error {
 			break
 		} else if err != nil {
 			return fmt.Errorf("error al leer el archivo CSV: %v", err)
-		}
-	
-		agency, err := strconv.ParseUint(agencyIDStr, 10, 8)
-		if err != nil {
-			return fmt.Errorf("error al parsear AGENCIA: %v", err)
 		}
 
 		document, err := strconv.ParseUint(row[2], 10, 32)
@@ -224,4 +240,50 @@ func (c *Client) sendBatch(conn net.Conn, batchBuffer []byte, numBets int) error
 	// Cerrar la conexión (la conexión se cerrará automáticamente con defer)
 	time.Sleep(c.config.LoopPeriod)
 	return nil
+}
+
+// Enviar notificación de fin de apuestas
+func (c *Client) notifyFinalization(conn net.Conn) error {
+	message, err := EncodeFinalizationMessage(c.agency)
+	if err != nil {
+		return fmt.Errorf("error al codificar la notificacion: %v", err)
+	}
+    err = SendMessage(conn, message)
+    if err != nil {
+        return fmt.Errorf("error al enviar notificación de fin de apuestas: %v", err)
+    }
+    log.Infof("action: end_of_bets_notification | result: success | client_id: %v", c.config.ID)
+    return nil
+}
+
+// Consultar lista de ganadores
+func (c *Client) consultWinners(conn net.Conn) error {
+	message, err := EncodeWinnerQueryMessage(c.agency)
+	if err != nil {
+		return fmt.Errorf("error al codificar la query: %v", err)
+	}
+
+    err = SendMessage(conn, message)
+    if err != nil {
+        return fmt.Errorf("error al solicitar lista de ganadores: %v", err)
+    }
+
+    // Recibir respuesta
+    response, err := ReceiveMessage(conn)
+    if err != nil {
+        return fmt.Errorf("error al recibir lista de ganadores: %v", err)
+    }
+
+    // Decodificar lista de ganadores
+    winners, err := DecodeWinnersMessage(response)
+    if err != nil {
+        return fmt.Errorf("error al decodificar la lista de ganadores: %v", err)
+    }
+
+    // Imprimir la cantidad de ganadores por log
+    log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners))
+	// Imprimir la lista completa de ganadores
+	log.Infof("Lista de ganadores: %v", winners)
+
+    return nil
 }

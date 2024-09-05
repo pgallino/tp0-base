@@ -7,6 +7,7 @@ MSG_TYPE_APUESTA = 0x01
 MSG_TYPE_CONFIRMACION = 0x02
 MSG_TYPE_FINALIZACION = 0x03
 MSG_TYPE_CONSULTA = 0x04
+MSG_TYPE_WINNERS = 0x05
 
 
 # Estructura de los paquetes -> pensado para los ejs 5 y 6
@@ -46,6 +47,14 @@ MSG_TYPE_CONSULTA = 0x04
 # Byte 1-2  : Longitud total del mensaje (2 bytes, uint16, big-endian)
 # Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x04)
 # Byte 4    : ID de la agencia (1 byte, uint8)
+# -----------------------------------------
+
+# 5. Paquete de Lista de Ganadores (MSG_TYPE_WINNERS = 0x05)
+# -----------------------------------------
+# Byte 1-2  : Longitud total del mensaje (2 bytes, uint16, big-endian)
+# Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x05)
+# Byte 4    : Cantidad de ganadores (1 byte, uint8)
+# Byte 5-N  : Lista de ganadores (cada ganador es un DNI representado como 4 bytes, uint32, big-endian)
 # -----------------------------------------
 
 # Codificadores
@@ -107,6 +116,38 @@ def encode_query_message(agency_id):
 
     return struct.pack('>HBB', total_length, MSG_TYPE_CONSULTA, agency_id)
 
+def encode_winners_message(winners):
+    """
+    Codifica un mensaje de lista de ganadores en un formato binario.
+    """
+    logging.info(f"Número de ganadores: {len(winners)}")
+    
+    # Verificar si el número de ganadores excede el límite de 255
+    if len(winners) > 255:
+        raise ValueError("El número de ganadores excede el límite de 255")
+
+    buffer = bytearray()
+
+    # Calcular la longitud total del mensaje (2 bytes longitud total + 1 byte tipo mensaje + 1 byte cantidad de ganadores + 4 bytes por cada ganador)
+    total_length = 4 + len(winners) * 4
+
+    # Empaquetar longitud total (2 bytes), tipo de mensaje (1 byte) y cantidad de ganadores (1 byte)
+    buffer.extend(struct.pack('>HBB', total_length, MSG_TYPE_WINNERS, len(winners)))
+
+    # Empaquetar cada ganador (DNI) como uint32 en Big Endian
+    for winner in winners:
+        try:
+            # Convertir el DNI (string) en un entero uint32
+            winner_int = int(winner)
+            buffer.extend(struct.pack('>I', winner_int))
+        except ValueError as e:
+            logging.error(f"Error al convertir el DNI {winner} a entero: {e}")
+            raise
+
+    return buffer
+
+
+
 # Decodificadores
 # =========================================
 
@@ -114,7 +155,6 @@ def decode_message(data):
     """
     Decodifica un mensaje recibido en su estructura de datos correspondiente.
     """
-
     # El tipo de mensaje está en el tercer byte
     tipo_mensaje = data[2]
 
@@ -122,8 +162,12 @@ def decode_message(data):
         return decode_bet_message(data[3:])
     elif tipo_mensaje == MSG_TYPE_CONFIRMACION:
         return decode_confirmation_message(data[3:])
+    elif tipo_mensaje == MSG_TYPE_FINALIZACION:
+        return decode_finalization_message(data[3:])
+    elif tipo_mensaje == MSG_TYPE_CONSULTA:
+        return decode_query_message(data[3:])
     else:
-        raise ValueError("Tipo de mensaje desconocido")
+        raise ValueError(f"Tipo de mensaje desconocido: {tipo_mensaje}")
 
 def decode_bet_message(data):
     """

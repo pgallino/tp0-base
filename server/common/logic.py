@@ -23,6 +23,21 @@ def procesar_mensaje(data):
             response = encode_confirmation_message(success=True)
             logging.info(f"action: batch_almacenado | result: success")
             return response
+        
+        elif decoded_message.get("tipo") == "finalizacion":
+            # Manejo de mensaje de tipo finalización
+            agency_id = decoded_message["agency_id"]
+            logging.info(f"action: procesar_finalizacion | result: success | agency_id: {agency_id}")
+            # Respuesta opcional, por ejemplo, una confirmación
+            response = encode_confirmation_message(success=True)
+            return response
+
+        elif decoded_message.get("tipo") == "consulta":
+            # Manejo de mensaje de tipo consulta de ganadores
+            agency_id = decoded_message["agency_id"]
+            logging.info(f"action: procesar_consulta | result: success | agency_id: {agency_id}")
+            # Aquí podrías implementar lógica para enviar una lista de ganadores
+            response = encode_confirmation_message(success=True)
 
         else:
             # Tipo de mensaje desconocido

@@ -31,10 +31,35 @@ import (
 // # Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x02)
 // # Byte 4    : Código de estado (1 byte, uint8; 0x00 para éxito, 0x01 para error)
 
+// # 3. Paquete de Finalización (MSG_TYPE_FINALIZACION = 0x03)
+// # -----------------------------------------
+// # Byte 1-2  : Longitud total del mensaje (2 bytes, uint16, big-endian)
+// # Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x03)
+// # Byte 4    : ID de la agencia (1 byte, uint8)
+// # -----------------------------------------
+
+// # 4. Paquete de Consulta de Ganadores (MSG_TYPE_CONSULTA = 0x04)
+// # -----------------------------------------
+// # Byte 1-2  : Longitud total del mensaje (2 bytes, uint16, big-endian)
+// # Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x04)
+// # Byte 4    : ID de la agencia (1 byte, uint8)
+// # -----------------------------------------
+
+// # 5. Paquete de Lista de Ganadores (MSG_TYPE_WINNERS = 0x05)
+// # -----------------------------------------
+// # Byte 1-2  : Longitud total del mensaje (2 bytes, uint16, big-endian)
+// # Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x05)
+// # Byte 4    : Cantidad de ganadores (1 byte, uint8)
+// # Byte 5-N  : Lista de ganadores (cada ganador es un DNI representado como 4 bytes, uint32, big-endian)
+// # -----------------------------------------
+
 // Constantes para tipos de mensajes
 const (
 	MSG_TYPE_APUESTA      = 0x01
 	MSG_TYPE_CONFIRMACION = 0x02
+	MSG_TYPE_FINALIZACION = 0x03
+	MSG_TYPE_CONSULTA     = 0x04
+	MSG_TYPE_WINNERS      = 0x05
 )
 
 func EncodeBetMessage(bets []Bet) ([]byte, error) {
@@ -206,7 +231,57 @@ func encodeBatchMessage(batchBuffer []byte, numBets int) ([]byte, error) {
 	return buffer.Bytes(), nil
 }
 
+// EncodeFinalizationMessage crea un mensaje de finalización (tipo 0x03)
+func EncodeFinalizationMessage(agencyID uint8) ([]byte, error) {
+	buffer := new(bytes.Buffer)
 
+	// Longitud total del mensaje (4 bytes fijos)
+	totalLength := uint16(4)
+
+	// Escribir longitud total del mensaje (2 bytes, big-endian)
+	if err := binary.Write(buffer, binary.BigEndian, totalLength); err != nil {
+		return nil, fmt.Errorf("error al escribir la longitud total del mensaje de finalización: %v", err)
+	}
+
+	// Escribir tipo de mensaje (1 byte, valor fijo: 0x03)
+	if err := buffer.WriteByte(MSG_TYPE_FINALIZACION); err != nil {
+		return nil, fmt.Errorf("error al escribir el tipo de mensaje: %v", err)
+	}
+
+	// Escribir ID de la agencia (1 byte)
+	if err := buffer.WriteByte(agencyID); err != nil {
+		return nil, fmt.Errorf("error al escribir el ID de la agencia: %v", err)
+	}
+
+	return buffer.Bytes(), nil
+}
+
+// EncodeWinnerQueryMessage crea un mensaje de consulta de ganadores (tipo 0x04)
+func EncodeWinnerQueryMessage(agencyID uint8) ([]byte, error) {
+	buffer := new(bytes.Buffer)
+
+	// Longitud total del mensaje (4 bytes fijos)
+	totalLength := uint16(4)
+
+	// Escribir longitud total del mensaje (2 bytes, big-endian)
+	if err := binary.Write(buffer, binary.BigEndian, totalLength); err != nil {
+		return nil, fmt.Errorf("error al escribir la longitud total del mensaje de consulta de ganadores: %v", err)
+	}
+
+	// Escribir tipo de mensaje (1 byte, valor fijo: 0x04)
+	if err := buffer.WriteByte(MSG_TYPE_CONSULTA); err != nil {
+		return nil, fmt.Errorf("error al escribir el tipo de mensaje: %v", err)
+	}
+
+	// Escribir ID de la agencia (1 byte)
+	if err := buffer.WriteByte(agencyID); err != nil {
+		return nil, fmt.Errorf("error al escribir el ID de la agencia: %v", err)
+	}
+
+	return buffer.Bytes(), nil
+}
+
+// =============================== decodificadores ================================= //
 
 // DecodeConfirmationMessage decodifica un mensaje de confirmación recibido desde el servidor
 func DecodeConfirmationMessage(data []byte) (bool, error) {
@@ -234,3 +309,32 @@ func DecodeConfirmationMessage(data []byte) (bool, error) {
 	success := data[1] == 0x00
 	return success, nil
 }
+
+func DecodeWinnersMessage(data []byte) ([]uint32, error) {
+    if len(data) < 2 {  // Al menos debe tener 2 bytes: 1 para tipo y 1 para cantidad de ganadores
+        return nil, fmt.Errorf("el mensaje de ganadores es demasiado corto")
+    }
+
+    // Verificar el tipo de mensaje (debería ser 0x05)
+    if data[0] != MSG_TYPE_WINNERS {
+        return nil, fmt.Errorf("tipo de mensaje inesperado: %x", data[0])
+    }
+
+    // Leer la cantidad de ganadores
+    winnerCount := int(data[1])
+
+    // Verificar que el tamaño del mensaje sea consistente con el número de ganadores
+    expectedLength := 2 + winnerCount*4  // 2 bytes iniciales + 4 bytes por cada ganador
+    if len(data) != expectedLength {
+        return nil, fmt.Errorf("longitud de mensaje incorrecta: esperada %d, recibida %d", expectedLength, len(data))
+    }
+
+    // Leer los DNIs de los ganadores
+    winners := make([]uint32, winnerCount)
+    for i := 0; i < winnerCount; i++ {
+        winners[i] = binary.BigEndian.Uint32(data[2+i*4:])
+    }
+
+    return winners, nil
+}
+
