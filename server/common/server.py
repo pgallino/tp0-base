@@ -68,13 +68,43 @@ class Server:
             logging.info(f"Agencia {agency_id} registrada con éxito.")
             notificaciones += 1
 
+
+    def _send_all(self, pipe, data):
+        """Función que asegura que todos los datos se escriben en el pipe."""
+        data_length = len(data)
+        
+        logging.info(f"Intentando enviar {data_length} bytes de datos...\n\n")
+        
+        # Continuar enviando los datos hasta que todo haya sido enviado
+        try:
+            pipe.send_bytes(data)  # Intentar enviar los datos restantes
+        except Exception as e:
+            logging.error(f"Error al enviar datos por el pipe: {e}")
+        
+        logging.info(f"Envío completado. \n\n")
+
     def _realizar_sorteo_y_enviar_resultados(self):
         """
         Realiza el sorteo y luego envía los resultados a todos los clientes.
         """
         ganadores = self._realizar_sorteo()
         for pipe in self.pipes:
-            pipe.send(ganadores)
+            # Convertir los ganadores a una cadena
+            serialized_data = str(ganadores)
+            logging.info(f"data serializada de ganadores: {serialized_data}\n\n")
+            
+            data_length = f"{len(serialized_data):010d}"  # Convertir el tamaño a una cadena de 10 dígitos
+
+            # Enviar primero el tamaño del mensaje
+            logging.info(f"Enviando longitud de datos: {data_length}\n\n")
+            self._send_all(pipe, data_length.encode('utf-8'))  # Enviar el tamaño como una cadena de longitud fija
+
+            # Luego, enviar los datos
+            logging.info(f"Enviando datos por el pipe...\n\n")
+            self._send_all(pipe, serialized_data.encode('utf-8'))  # Asegurarse de que todos los datos sean enviados
+
+            logging.info(f"Envio de datos completado: {data_length}\n\n")
+
         self._on = False
 
     def _realizar_sorteo(self):
