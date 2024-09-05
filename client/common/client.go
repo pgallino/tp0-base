@@ -15,6 +15,12 @@ import (
 	"github.com/op/go-logging"
 )
 
+const (
+    headerSize    = 4 // Tamaño del encabezado de un mensaje
+    bufferSizeKB  = 1024
+    envAgency     = "AGENCIA"
+)
+
 var log = logging.MustGetLogger("log")
 
 type Bet struct {
@@ -100,98 +106,81 @@ func (c *Client) StartClient() {
 func (c *Client) readAndSendBets(conn net.Conn) error {
 
 
-	agencyIDStr := os.Getenv("AGENCIA")
-	if agencyIDStr == "" {
-		return fmt.Errorf("la variable de entorno AGENCIA no está configurada")
-	}
+    agencyIDStr := os.Getenv(envAgency)
+    if agencyIDStr == "" {
+        return fmt.Errorf("la variable de entorno AGENCIA no está configurada")
+    }
 
-	csvFilePath := fmt.Sprintf("/data/agency-%s.csv", agencyIDStr)
+    csvFilePath := fmt.Sprintf("/data/agency-%s.csv", agencyIDStr)
 
-	file, err := os.Open(csvFilePath)
+    file, err := os.Open(csvFilePath)
+    if err != nil {
+        return fmt.Errorf("error al abrir el archivo CSV: %v", err)
+    }
+    defer file.Close()
 
-	
-	if err != nil {
-		return fmt.Errorf("error al abrir el archivo CSV: %v", err)
-	}
-	defer file.Close()
+    reader := csv.NewReader(file)
+    limitBytes := c.config.MaxSizeKB * bufferSizeKB // Convertir el tamaño del batch de KB a bytes
 
-	reader := csv.NewReader(file)
-	batchBuffer := new(bytes.Buffer)
-	bets_number := 0
-	limitBytes := c.config.MaxSizeKB * 1024 // Convertir el tamaño del batch de KB a bytes
-	
-	// Restar los primeros 4 bytes del encabezado
-	bytesRestantes := limitBytes - 4
+    agency, err := strconv.ParseUint(agencyIDStr, 10, 8)
+    if err != nil {
+        return fmt.Errorf("error al parsear AGENCIA: %v", err)
+    }
+    c.agency = uint8(agency)
 
-	agency, err := strconv.ParseUint(agencyIDStr, 10, 8)
-	if err != nil {
-		return fmt.Errorf("error al parsear AGENCIA: %v", err)
-	}
-	c.agency = uint8(agency)
+    for {
+        batch, betsNumber, err := c.buildBatch(reader, c.agency, limitBytes)
+        if err == io.EOF {
+            break // Fin del archivo
+        } else if err != nil {
+            return fmt.Errorf("error al construir el batch: %v", err)
+        }
 
-	for {
-		// Leer una fila del CSV
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return fmt.Errorf("error al leer el archivo CSV: %v", err)
-		}
+        log.Infof("El batch alcanzó el límite. Tamaño: %d bytes | Número de apuestas: %d", len(batch), betsNumber)
 
-		document, err := strconv.ParseUint(row[2], 10, 32)
-		if err != nil {
-			return fmt.Errorf("error al parsear el documento: %v", err)
-		}
+        // Enviar el batch actual
+        err = c.sendBatch(conn, batch, betsNumber)
+        if err != nil {
+            return fmt.Errorf("error al enviar el batch: %v", err)
+        }
+    }
 
-		number, err := strconv.ParseUint(row[4], 10, 16)
-		if err != nil {
-			return fmt.Errorf("error al parsear el número apostado: %v", err)
-		}
+    return nil
+}
 
-		bet := Bet{
-			Agency:    uint8(agency),
-			FirstName: row[0],
-			LastName:  row[1],
-			Document:  uint32(document),
-			Birthdate: row[3],
-			Number:    uint16(number),
-		}
+func (c *Client) buildBatch(reader *csv.Reader, agency uint8, limitBytes int) ([]byte, int, error) {
+    batchBuffer := new(bytes.Buffer)
+    betsNumber := 0
+    bytesRestantes := limitBytes - headerSize
 
-		// Codificar la apuesta para obtener su tamaño en bytes
-		betBytes, err := encodeBet(bet)
-		if err != nil {
-			return fmt.Errorf("error al codificar la apuesta: %v", err)
-		}
+    for {
+        // Leer una fila del CSV
+        bet, err := readBetFromCSV(reader, agency)
+        if err == io.EOF {
+            if batchBuffer.Len() > 0 {
+                // Si hay apuestas pendientes en el batch, retornarlas
+                return batchBuffer.Bytes(), betsNumber, nil
+            }
+            return nil, 0, io.EOF // No hay más apuestas y el buffer está vacío
+        } else if err != nil {
+            return nil, 0, fmt.Errorf("error al leer la apuesta: %v", err)
+        }
 
-		// Si agregar esta apuesta supera el límite de tamaño en bytes, envio el batch actual
-		if batchBuffer.Len()+len(betBytes) > bytesRestantes {
+        // Codificar la apuesta para obtener su tamaño en bytes
+        betBytes, err := encodeBet(bet)
+        if err != nil {
+            return nil, 0, fmt.Errorf("error al codificar la apuesta: %v", err)
+        }
 
-			log.Infof("El batch actual alcanzó el límite. Tamaño: %d bytes | Número de apuestas: %d", batchBuffer.Len(), bets_number)
-			// envio el batch actual
-			err := c.sendBatch(conn, batchBuffer.Bytes(), bets_number)
-			if err != nil {
-				return err
-			}
+        // Si agregar esta apuesta supera el límite de tamaño en bytes, retornar el batch actual
+        if batchBuffer.Len()+len(betBytes) > bytesRestantes {
+            return batchBuffer.Bytes(), betsNumber, nil
+        }
 
-			// Limpiar el buffer y la lista de apuestas para el siguiente batch
-			batchBuffer.Reset()
-			bets_number = 0
-		}
-
-		// Agregar la apuesta al batch
-		batchBuffer.Write(betBytes)
-		bets_number += 1
-	}
-
-	// Enviar el último batch si hay apuestas pendientes
-	if batchBuffer.Len() > 0 {
-		err := c.sendBatch(conn, batchBuffer.Bytes(), bets_number)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+        // Agregar la apuesta al batch
+        batchBuffer.Write(betBytes)
+        betsNumber++
+    }
 }
 
 // waitForConfirmation recibe un mensaje de confirmación desde el servidor, lo decodifica y maneja el resultado
@@ -286,4 +275,37 @@ func (c *Client) consultWinners(conn net.Conn) error {
 	log.Infof("Lista de ganadores: %v", winners)
 
     return nil
+}
+
+func readBetFromCSV(reader *csv.Reader, agency uint8) (Bet, error) {
+    // Leer una fila del archivo CSV
+    row, err := reader.Read()
+    if err == io.EOF {
+        return Bet{}, io.EOF // No es un error grave, solo señal de que terminó el archivo
+    } else if err != nil {
+        return Bet{}, fmt.Errorf("error al leer el archivo CSV: %v", err)
+    }
+
+    // Convertir campos
+    document, err := strconv.ParseUint(row[2], 10, 32)
+    if err != nil {
+        return Bet{}, fmt.Errorf("error al parsear el documento: %v", err)
+    }
+
+    number, err := strconv.ParseUint(row[4], 10, 16)
+    if err != nil {
+        return Bet{}, fmt.Errorf("error al parsear el número apostado: %v", err)
+    }
+
+    // Crear la estructura Bet
+    bet := Bet{
+        Agency:    agency,
+        FirstName: row[0],
+        LastName:  row[1],
+        Document:  uint32(document),
+        Birthdate: row[3],
+        Number:    uint16(number),
+    }
+
+    return bet, nil
 }
