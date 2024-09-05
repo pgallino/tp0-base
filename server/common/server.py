@@ -17,7 +17,7 @@ class Server:
         self._server_socket.listen(listen_backlog)
         self._on = True
         self.agencias = 0
-        self._client_processes = []  # Lista para almacenar los hilos de las agencias
+        self._client_processes = []  # Lista para almacenar los procesos de las agencias
         self.store_lock = multiprocessing.Lock()  # Lock para almacenar apuestas
         self.pipes = []  # Lista para almacenar los extremos de las pipes (canales)
         self.notif_queue = multiprocessing.Queue()

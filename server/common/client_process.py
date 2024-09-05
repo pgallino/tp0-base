@@ -10,6 +10,8 @@ from common.messages import (
 
 from common.socket_handler import recv_msg, send_msg
 
+LENGTH_PIPE_MSG = 10
+
 def AgencyProcess(agency_socket, store_lock, notif_queue, pipe_conn):
     agency_id = None  # Para guardar el ID de la agencia cuando llegue el mensaje de finalización
 
@@ -17,45 +19,55 @@ def AgencyProcess(agency_socket, store_lock, notif_queue, pipe_conn):
         while True:
             data = recv_msg(agency_socket)  # Recibir mensaje
             if not data:
-                logging.error("NO LLEGO NADA EN EL HILO PRINCIPAL")
+                logging.error("action: recv_data | result: error | no se recibio data")
                 break
             
             # Procesar el mensaje
             decoded_message = decode_message(data)
 
+            # ============== Mensaje de batch de apuestas ============== #
+
             if decoded_message.get("tipo") == "apuesta":
                 apuestas = decoded_message["apuestas"]
-                # Almacenar las apuestas recibidas
+
+                # Almacenar las apuestas recibidas -> utilizo lock
                 with store_lock:
                     store_bets(apuestas)
                 response = encode_confirmation_message(success=True)
-                logging.info("Apuestas almacenadas exitosamente.")
+
+                logging.info(f"action: almacenar batch | result: success | cantidad de apuestas: {len(apuestas)}")
+                # logging.debug(f"apuestas almacenadas: {apuestas}")
                 send_msg(agency_socket, response)
+
+                logging.info("action: confirmation | result: success")
+
+            # ============== Mensaje de finalización ============== #
 
             elif decoded_message.get("tipo") == "finalizacion":
                 agency_id = decoded_message["agency_id"]
                 notif_queue.put(agency_id)
-                logging.info(f"Agencia {agency_id} ha enviado notificación de finalización.")
+
+                logging.info(f"action: notificado | result: success | Agencia {agency_id} ha enviado notificación de finalización.")
 
                 # Recibir primero el tamaño del mensaje (10 bytes)
-                data_length_str = pipe_conn.recv_bytes(10).decode('utf-8')  # Recibir los primeros 10 bytes que contienen el tamaño
+                data_length_str = pipe_conn.recv_bytes(LENGTH_PIPE_MSG).decode('utf-8')  # Recibir los primeros 10 bytes que contienen el tamaño
                 data_length = int(data_length_str)
 
                 # Recibir los datos completos
-                serialized_data = pipe_conn.recv_bytes(data_length).decode('utf-8')  # Recibir todos los datos de una sola vez
+                serialized_data = pipe_conn.recv_bytes(data_length).decode('utf-8')  # Recibir todos los datos
 
                 # Convertir la cadena recibida en la estructura de datos original
                 ganadores_agencia = eval(serialized_data)  # Convertir de nuevo a dic
-                logging.info(f"Recibidos los ganadores para la agencia {agency_id}: {ganadores_agencia}")
 
                 # Filtrar los ganadores de la agencia correspondiente
                 ganadores_agencia = ganadores_agencia.get(agency_id, [])
 
-                logging.info(f"GANADORES de {agency_id}: {ganadores_agencia}")
-
+                #TODO guardar los ganadores y enviarlos luego de recibir el mensaje de solicitud
                 response = encode_winners_message(ganadores_agencia)
                 send_msg(agency_socket, response)
-                logging.info(f"Resultados enviados a la agencia {agency_id}.")
+
+
+                logging.info(f"action: send_results | result: success | Agency: {agency_id}")
                 break  # Salir del ciclo tras la notificación y espera
 
             else:
@@ -66,9 +78,9 @@ def AgencyProcess(agency_socket, store_lock, notif_queue, pipe_conn):
         logging.error(f"Error en la conexión con la agencia: {e}")
     finally:
         # Cerrar el socket cuando el proceso termina
-        logging.info("Cerrando el socket de la agencia")
-        agency_socket.close()  # Cerramos el socket explícitamente
-
+        agency_socket.close()  # Cerrar socket
+        pipe_conn.close()  # Cerrar el pipe
+        logging.info(f"action: closing | result: success | msg: cerró el proceso de agency: {agency_id}")
 
 # # TODO utilizar esta funcion si no está permitida eval
 # def parse_to_dict(serialized_data):
