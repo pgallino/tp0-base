@@ -283,56 +283,89 @@ func EncodeWinnerQueryMessage(agencyID uint8) ([]byte, error) {
 
 // =============================== decodificadores ================================= //
 
+func decodeMessage(response []byte) (string, interface{}, error) {
+    if len(response) < 2 {
+        return "", nil, fmt.Errorf("mensaje demasiado corto para decodificar")
+    }
+
+    // Extraer el tipo de mensaje del primer byte
+    msgType := response[0]
+
+    switch msgType {
+
+    case MSG_TYPE_CONFIRMACION:
+        // Si es un mensaje de confirmación
+        success, err := DecodeConfirmationMessage(response)
+        if err != nil {
+            return "", nil, fmt.Errorf("error al decodificar el mensaje de confirmación: %v", err)
+        }
+        return "confirmacion", success, nil
+
+
+    case MSG_TYPE_WINNERS:
+        // Si es un mensaje de ganadores
+        winners, err := DecodeWinnersMessage(response)
+        if err != nil {
+            return "", nil, fmt.Errorf("error al decodificar el mensaje de ganadores: %v", err)
+        }
+        return "ganadores", winners, nil
+
+    default:
+        return "", nil, fmt.Errorf("tipo de mensaje desconocido: %x", msgType)
+    }
+}
+
+
 // DecodeConfirmationMessage decodifica un mensaje de confirmación recibido desde el servidor
-func DecodeConfirmationMessage(data []byte) (bool, error) {
+func DecodeConfirmationMessage(response []byte) (bool, error) {
 	// Verificar que el mensaje tenga exactamente 2 bytes (tipo de mensaje + código de estado)
-	if len(data) != 2 {
+	if len(response) < 2 {
 		log.Errorf(
 			"action: decode_confirmation | result: fail | reason: message too short | length_received: %d",
-			len(data),
+			len(response),
 		)
 		return false, fmt.Errorf("action: decode_confirmation | result: fail | reason: message too short | length_received: %d",
-			len(data))
+			len(response))
 	}
 
 	// Verificar que el tipo de mensaje sea el esperado (MSG_TYPE_CONFIRMACION)
-	if data[0] != MSG_TYPE_CONFIRMACION {
+	if response[0] != MSG_TYPE_CONFIRMACION {
 		log.Errorf(
 			"action: decode_confirmation | result: fail | reason: unexpected message type | message_type: %x",
-			data[0],
+			response[0],
 		)
 		return false, fmt.Errorf("action: decode_confirmation | result: fail | reason: unexpected message type | message_type: %x",
-			data[0])
+			response[0])
 	}
 
 	// El segundo byte es el código de estado: 0x00 para éxito, 0x01 para error
-	success := data[1] == 0x00
+	success := response[1] == 0x00
 	return success, nil
 }
 
-func DecodeWinnersMessage(data []byte) ([]uint32, error) {
-    if len(data) < 2 {  // Al menos debe tener 2 bytes: 1 para tipo y 1 para cantidad de ganadores
+func DecodeWinnersMessage(response []byte) ([]uint32, error) {
+    if len(response) < 2 {  // Al menos debe tener 2 bytes: 1 para tipo y 1 para cantidad de ganadores
         return nil, fmt.Errorf("el mensaje de ganadores es demasiado corto")
     }
 
     // Verificar el tipo de mensaje (debería ser 0x05)
-    if data[0] != MSG_TYPE_WINNERS {
-        return nil, fmt.Errorf("tipo de mensaje inesperado: %x", data[0])
+    if response[0] != MSG_TYPE_WINNERS {
+        return nil, fmt.Errorf("tipo de mensaje inesperado: %x", response[0])
     }
 
     // Leer la cantidad de ganadores
-    winnerCount := int(data[1])
+    winnerCount := int(response[1])
 
     // Verificar que el tamaño del mensaje sea consistente con el número de ganadores
     expectedLength := 2 + winnerCount*4  // 2 bytes iniciales + 4 bytes por cada ganador
-    if len(data) != expectedLength {
-        return nil, fmt.Errorf("longitud de mensaje incorrecta: esperada %d, recibida %d", expectedLength, len(data))
+    if len(response) != expectedLength {
+        return nil, fmt.Errorf("longitud de mensaje incorrecta: esperada %d, recibida %d", expectedLength, len(response))
     }
 
     // Leer los DNIs de los ganadores
     winners := make([]uint32, winnerCount)
     for i := 0; i < winnerCount; i++ {
-        winners[i] = binary.BigEndian.Uint32(data[2+i*4:])
+        winners[i] = binary.BigEndian.Uint32(response[2+i*4:])
     }
 
     return winners, nil

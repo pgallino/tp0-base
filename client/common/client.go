@@ -263,18 +263,46 @@ func (c *Client) consultWinners(conn net.Conn) error {
         return fmt.Errorf("error al recibir lista de ganadores: %v", err)
     }
 
-    // Decodificar lista de ganadores
-    winners, err := DecodeWinnersMessage(response)
-    if err != nil {
-        return fmt.Errorf("error al decodificar la lista de ganadores: %v", err)
-    }
+	// Decodificar el mensaje recibido
+	msgType, decodedMsg, err := decodeMessage(response)
+	if err != nil {
+		return fmt.Errorf("error al decodificar el mensaje: %v", err)
+	}
 
-    // Imprimir la cantidad de ganadores por log
-    log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners))
-	// Imprimir la lista completa de ganadores
-	log.Infof("Lista de ganadores: %v", winners)
+	switch msgType {
+	case "confirmacion":
+		// Si el mensaje es confirmation significa que todavia no se hizo el sorteo, que espere
+		// por simplicidad me quedo esperando a que me llegue, el server eventualmente me lo va a enviar
+		// podría haber reintentos o polling
 
-    return nil
+		log.Infof("action: consulta_ganadores | result: waiting | msg: sorteo no realizado aún, esperando ganadores...")
+
+		response, err = ReceiveMessage(conn)
+		if err != nil {
+			return fmt.Errorf("error al recibir lista de ganadores después de la confirmación: %v", err)
+		}
+
+		// Ahora decodificamos la lista de ganadores
+		winners, err := DecodeWinnersMessage(response)
+		if err != nil {
+			return fmt.Errorf("error al decodificar la lista de ganadores: %v", err)
+		}
+
+		// Imprimir la cantidad de ganadores por log
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners))
+		log.Infof("Lista de ganadores: %v", winners)
+		return nil
+		
+	case "ganadores":
+		// Si el mensaje es de tipo ganadores, lo procesamos y terminamos
+		winners := decodedMsg.([]uint32)
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners))
+		log.Infof("Lista de ganadores: %v", winners)
+		return nil
+
+	default:
+		return fmt.Errorf("tipo de mensaje inesperado: %s", msgType)
+	}
 }
 
 func readBetFromCSV(reader *csv.Reader, agency uint8) (Bet, error) {

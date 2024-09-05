@@ -14,6 +14,7 @@ LENGTH_PIPE_MSG = 10
 
 def AgencyProcess(agency_socket, store_lock, notif_queue, pipe_conn):
     agency_id = None  # Para guardar el ID de la agencia cuando llegue el mensaje de finalización
+    ganadores_encodeados = None
 
     try:
         while True:
@@ -64,12 +65,16 @@ def AgencyProcess(agency_socket, store_lock, notif_queue, pipe_conn):
 
                 #TODO guardar los ganadores y enviarlos luego de recibir el mensaje de solicitud
                 response = encode_winners_message(ganadores_agencia)
-                send_msg(agency_socket, response)
+                ganadores_encodeados = response
 
 
-                logging.info(f"action: send_results | result: success | Agency: {agency_id}")
-                break  # Salir del ciclo tras la notificación y espera
-
+                logging.info(f"action: load_winners | result: success | Agency: {agency_id}")
+            
+            elif decoded_message.get("tipo") == "consulta":
+                if ganadores_encodeados:
+                    send_msg(agency_socket, response)
+                    logging.info(f"action: send_results | result: success | Agency: {agency_id}")
+                    break # Salir del ciclo
             else:
                 # Tipo de mensaje desconocido
                 logging.error("action: procesar_mensaje | result: fail | error: Tipo de mensaje desconocido")
