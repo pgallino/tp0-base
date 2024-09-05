@@ -1,6 +1,7 @@
 import socket
 import logging
 import signal
+import time
 from common.socket_handler import recv_msg, send_msg
 from common.logic import procesar_mensaje
 from common.messages import (
@@ -37,6 +38,9 @@ class Server:
         finishes, servers starts to accept new connections again
         """
 
+        # Iniciar el temporizador
+        start_time = time.time()
+
         while self._on:
             # Aceptar nuevas conexiones si hay menos de MAX_CLIENTS
             if self.agencias < MAX_CLIENTS:
@@ -53,6 +57,9 @@ class Server:
 
         # Al salir del bucle principal, cerrar todas las conexiones activas y el socket del servidor
         self._cleanup()
+        elapsed_time = time.time() - start_time
+        logging.info(f"TIEMPO FINAL {elapsed_time:.2f} segundos")
+        
 
     def __handle_client_connection(self, client_sock):
         """
