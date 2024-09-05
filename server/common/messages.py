@@ -5,6 +5,8 @@ from .utils import Bet
 # Definición de los tipos de mensajes
 MSG_TYPE_APUESTA = 0x01
 MSG_TYPE_CONFIRMACION = 0x02
+MSG_TYPE_FINALIZACION = 0x03
+MSG_TYPE_CONSULTA = 0x04
 
 
 # Estructura de los paquetes -> pensado para los ejs 5 y 6
@@ -30,6 +32,20 @@ MSG_TYPE_CONFIRMACION = 0x02
 # Byte 1-2  : Longitud total del mensaje (2 bytes, uint16, big-endian)
 # Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x02)
 # Byte 4    : Código de estado (1 byte, uint8; 0x00 para éxito, 0x01 para error)
+# -----------------------------------------
+
+# 3. Paquete de Finalización (MSG_TYPE_FINALIZACION = 0x03)
+# -----------------------------------------
+# Byte 1-2  : Longitud total del mensaje (2 bytes, uint16, big-endian)
+# Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x03)
+# Byte 4    : ID de la agencia (1 byte, uint8)
+# -----------------------------------------
+
+# 4. Paquete de Consulta de Ganadores (MSG_TYPE_CONSULTA = 0x04)
+# -----------------------------------------
+# Byte 1-2  : Longitud total del mensaje (2 bytes, uint16, big-endian)
+# Byte 3    : Tipo de mensaje (1 byte, valor fijo: 0x04)
+# Byte 4    : ID de la agencia (1 byte, uint8)
 # -----------------------------------------
 
 # Codificadores
@@ -74,6 +90,22 @@ def encode_confirmation_message(success=True):
     total_length = 4  # 2 bytes para la longitud, 1 para el tipo, 1 para el código de estado
 
     return struct.pack('>HBB', total_length, MSG_TYPE_CONFIRMACION, response_code)
+
+def encode_finalization_message(agency_id):
+    """
+    Codifica un mensaje de finalización en un formato binario.
+    """
+    total_length = 4  # 2 bytes para la longitud, 1 para el tipo, 1 para el ID de la agencia
+
+    return struct.pack('>HBB', total_length, MSG_TYPE_FINALIZACION, agency_id)
+
+def encode_query_message(agency_id):
+    """
+    Codifica un mensaje de consulta de ganadores en un formato binario.
+    """
+    total_length = 4  # 2 bytes para la longitud, 1 para el tipo, 1 para el ID de la agencia
+
+    return struct.pack('>HBB', total_length, MSG_TYPE_CONSULTA, agency_id)
 
 # Decodificadores
 # =========================================
@@ -137,6 +169,20 @@ def decode_confirmation_message(data):
     response_code = data[0]
     success = (response_code == 0x00)
     return {"tipo": "confirmacion", "success": success}
+
+def decode_finalization_message(data):
+    """
+    Decodifica un mensaje de finalización y devuelve el ID de la agencia.
+    """
+    agency_id = data[0]
+    return {"tipo": "finalizacion", "agency_id": agency_id}
+
+def decode_query_message(data):
+    """
+    Decodifica un mensaje de consulta de ganadores y devuelve el ID de la agencia.
+    """
+    agency_id = data[0]
+    return {"tipo": "consulta", "agency_id": agency_id}
 
 def decode_finalization_message(data):
     """

@@ -56,7 +56,15 @@ func (c *Client) StartClient() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
 
-	err := c.readAndSendBets()
+    // Abrir una conexión con el servidor una vez
+    conn, err := CreateClientSocket(c.config.ServerAddress)
+    if err != nil {
+        log.Errorf("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
+        return
+    }
+    defer conn.Close() // Cerrar la conexión al final de todo
+
+	err = c.readAndSendBets(conn)
 	if err != nil {
 		log.Errorf("action: send_bets | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return
@@ -74,7 +82,7 @@ func (c *Client) StartClient() {
 }
 
 // readAndSendBets reads the bets from a CSV file, encodes them, and groups them into batchs by size
-func (c *Client) readAndSendBets() error {
+func (c *Client) readAndSendBets(conn net.Conn) error {
 
 
 	agencyIDStr := os.Getenv("AGENCIA")
@@ -96,15 +104,9 @@ func (c *Client) readAndSendBets() error {
 	batchBuffer := new(bytes.Buffer)
 	bets_number := 0
 	limitBytes := c.config.MaxSizeKB * 1024 // Convertir el tamaño del batch de KB a bytes
-
-	// Log para ver el tamaño máximo del batch en bytes
-	log.Infof("Tamaño máximo del batch: %d bytes", limitBytes)
 	
 	// Restar los primeros 4 bytes del encabezado
 	bytesRestantes := limitBytes - 4
-	
-	// Log para ver cuántos bytes quedan disponibles después de restar el encabezado
-	log.Infof("Bytes disponibles después de restar el encabezado: %d bytes", bytesRestantes)
 
 	for {
 		// Leer una fila del CSV
@@ -145,15 +147,12 @@ func (c *Client) readAndSendBets() error {
 			return fmt.Errorf("error al codificar la apuesta: %v", err)
 		}
 
-		// Log para ver el tamaño de la apuesta en bytes
-		log.Infof("Apuesta codificada: %v | Tamaño en bytes: %d", bet, len(betBytes))
-
 		// Si agregar esta apuesta supera el límite de tamaño en bytes, envio el batch actual
 		if batchBuffer.Len()+len(betBytes) > bytesRestantes {
 
 			log.Infof("El batch actual alcanzó el límite. Tamaño: %d bytes | Número de apuestas: %d", batchBuffer.Len(), bets_number)
 			// envio el batch actual
-			err := c.sendBatch(batchBuffer.Bytes(), bets_number)
+			err := c.sendBatch(conn, batchBuffer.Bytes(), bets_number)
 			if err != nil {
 				return err
 			}
@@ -170,7 +169,7 @@ func (c *Client) readAndSendBets() error {
 
 	// Enviar el último batch si hay apuestas pendientes
 	if batchBuffer.Len() > 0 {
-		err := c.sendBatch(batchBuffer.Bytes(), bets_number)
+		err := c.sendBatch(conn, batchBuffer.Bytes(), bets_number)
 		if err != nil {
 			return err
 		}
@@ -196,20 +195,14 @@ func waitForConfirmation(conn net.Conn) {
 	}
 
 	if success {
-		log.Infof("action: batch_apuesta_enviada | result: success")
+		log.Infof("action: batch_apuesta_confirmada | result: success")
 	} else {
-		log.Infof("action: batch_apuesta_enviada | result: fail")
+		log.Infof("action: batch_apuesta_confirmada | result: fail")
 	}
 }
 
 // sendBatch abre una nueva conexión, envía el batch, espera la confirmación, y cierra la conexión
-func (c *Client) sendBatch(batchBuffer []byte, numBets int) error {
-	// Abrir una nueva conexión con el servidor
-	conn, err := CreateClientSocket(c.config.ServerAddress)
-	if err != nil {
-		return fmt.Errorf("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
-	}
-	defer conn.Close()
+func (c *Client) sendBatch(conn net.Conn, batchBuffer []byte, numBets int) error {
 
 	// Codificar el batch de apuestas
 	message, err := encodeBatchMessage(batchBuffer, numBets)

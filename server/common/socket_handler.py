@@ -15,7 +15,7 @@ def recv_msg(sock):
     """
     header = _recv_all(sock, 2)
     if not header:
-        raise ValueError("No se pudo leer el encabezado del mensaje.")
+        raise ValueError("Conexion cerrada o No se pudo leer el encabezado del mensaje.")
     
     total_length = struct.unpack('>H', header)[0]
     data = _recv_all(sock, total_length - 2)
