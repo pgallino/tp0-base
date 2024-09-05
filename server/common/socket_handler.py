@@ -3,10 +3,6 @@
 import logging
 import socket
 import struct
-from common.messages import (
-    encode_bet_message,
-    encode_confirmation_message,
-)
 from common.utils import Bet
 
 def recv_msg(sock):

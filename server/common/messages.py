@@ -204,7 +204,7 @@ def decode_bet_message(data):
                   document=str(dni), birthdate=nacimiento, number=str(numero))
         apuestas.append(bet)
 
-    return apuestas
+    return {"tipo": "apuesta", "apuestas": apuestas}
 
 def decode_confirmation_message(data):
     """
