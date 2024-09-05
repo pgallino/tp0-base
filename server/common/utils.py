@@ -23,6 +23,9 @@ class Bet:
         self.document = document
         self.birthdate = datetime.date.fromisoformat(birthdate)
         self.number = int(number)
+    
+    def __repr__(self):
+        return f"Bet(dni={self.document}, numero={self.number})"
 
 """ Checks whether a bet won the prize or not. """
 def has_won(bet: Bet) -> bool:

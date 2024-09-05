@@ -29,12 +29,8 @@ def generar_docker_compose(nombre_archivo, cantidad_clientes):
             archivo.write("    environment:\n")
             archivo.write(f"      - CLI_ID={i}\n")
             archivo.write(f"      - AGENCIA={i}\n")  # AGENCIA variable
-            archivo.write(f"      - NOMBRE=Cliente{i}\n")  # Ejemplo nombre de cliente
-            archivo.write(f"      - APELLIDO=Apellido{i}\n")  # Ejemplo apellido
-            archivo.write(f"      - DOCUMENTO=3000000{i}\n")  # Documento variable
-            archivo.write(f"      - NACIMIENTO=199{i}-01-01\n")  # Fecha de nacimiento variable
-            archivo.write(f"      - NUMERO={i*1000}\n")  # Número de apuesta variable
             archivo.write("    volumes:\n")
+            archivo.write(f"      - ./dataset:/data\n")  # Montar el directorio con los archivos CSV
             archivo.write("      - ./client/config.yaml:/config.yaml\n")
             archivo.write("    networks:\n")
             archivo.write("      - testing_net\n")

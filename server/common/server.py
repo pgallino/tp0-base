@@ -64,10 +64,6 @@ class Server:
         finally:
             if client_sock.fileno() != -1:
                 client_sock.close()
-            # Le pongo el tope para que cierre después de atender a los 5 clientes
-            # TODO hacer configurable la cantidad de clientes
-            if self.agencias == MAX_CLIENTS:
-                self._on = False
             logging.info(f'action: close_connection | result: success | ip: {addr[0]}')
 
     def __accept_new_connection(self):

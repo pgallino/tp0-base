@@ -14,13 +14,16 @@ def procesar_mensaje(data):
     try:
         decoded_message = decode_message(data)
 
+        logging.info(f"lista de {len(decoded_message)} bets recibida: {decoded_message}")
+
+
         if isinstance(decoded_message, list) and all(isinstance(bet, Bet) for bet in decoded_message):
             # Manejo de mensaje de tipo apuesta
-            bet = decoded_message[0]
             store_bets(decoded_message)  # Almacena las apuestas recibidas
             for bet in decoded_message:
                 logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}")
             response = encode_confirmation_message(success=True)
+            logging.info(f"action: batch_almacenado | result: success")
             return response
 
         else:

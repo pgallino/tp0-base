@@ -73,79 +73,140 @@ func EncodeBetMessage(bets []Bet) ([]byte, error) {
 		return nil, err
 	}
 
-	// Codificar cada apuesta
+	// Codificar cada apuesta usando encodeBet
 	for _, bet := range bets {
-		// Escribir agencia
-		if err := buffer.WriteByte(bet.Agency); err != nil {
-			log.Errorf(
-				"action: write_agency | result: fail | error: %v",
-				err,
-			)
+		betBytes, err := encodeBet(bet)
+		if err != nil {
 			return nil, err
 		}
-
-		// Escribir longitud y nombre
-		if err := buffer.WriteByte(uint8(len(bet.FirstName))); err != nil {
-			log.Errorf(
-				"action: write_first_name_length | result: fail | error: %v",
-				err,
-			)
-			return nil, err
-		}
-		if _, err := buffer.WriteString(bet.FirstName); err != nil {
-			log.Errorf(
-				"action: write_first_name | result: fail | error: %v",
-				err,
-			)
-			return nil, err
-		}
-
-		// Escribir longitud y apellido
-		if err := buffer.WriteByte(uint8(len(bet.LastName))); err != nil {
-			log.Errorf(
-				"action: write_last_name_length | result: fail | error: %v",
-				err,
-			)
-			return nil, err
-		}
-		if _, err := buffer.WriteString(bet.LastName); err != nil {
-			log.Errorf(
-				"action: write_last_name | result: fail | error: %v",
-				err,
-			)
-			return nil, err
-		}
-
-		// Escribir DNI
-		if err := binary.Write(buffer, binary.BigEndian, bet.Document); err != nil {
-			log.Errorf(
-				"action: write_dni | result: fail | error: %v",
-				err,
-			)
-			return nil, err
-		}
-
-		// Escribir fecha de nacimiento
-		if _, err := buffer.WriteString(bet.Birthdate); err != nil {
-			log.Errorf(
-				"action: write_birthdate | result: fail | error: %v",
-				err,
-			)
-			return nil, err
-		}
-
-		// Escribir número apostado
-		if err := binary.Write(buffer, binary.BigEndian, bet.Number); err != nil {
-			log.Errorf(
-				"action: write_bet_number | result: fail | error: %v",
-				err,
-			)
-			return nil, err
-		}
+		buffer.Write(betBytes) // Escribir los bytes de la apuesta al buffer
 	}
 
 	return buffer.Bytes(), nil
 }
+
+func encodeBet(bet Bet) ([]byte, error) {
+	buffer := new(bytes.Buffer)
+
+	// Escribir agencia
+	if err := buffer.WriteByte(bet.Agency); err != nil {
+		log.Errorf(
+			"action: write_agency | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Escribir longitud y nombre
+	if err := buffer.WriteByte(uint8(len(bet.FirstName))); err != nil {
+		log.Errorf(
+			"action: write_first_name_length | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+	if _, err := buffer.WriteString(bet.FirstName); err != nil {
+		log.Errorf(
+			"action: write_first_name | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Escribir longitud y apellido
+	if err := buffer.WriteByte(uint8(len(bet.LastName))); err != nil {
+		log.Errorf(
+			"action: write_last_name_length | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+	if _, err := buffer.WriteString(bet.LastName); err != nil {
+		log.Errorf(
+			"action: write_last_name | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Escribir DNI
+	if err := binary.Write(buffer, binary.BigEndian, bet.Document); err != nil {
+		log.Errorf(
+			"action: write_dni | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Escribir fecha de nacimiento
+	if _, err := buffer.WriteString(bet.Birthdate); err != nil {
+		log.Errorf(
+			"action: write_birthdate | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Escribir número apostado
+	if err := binary.Write(buffer, binary.BigEndian, bet.Number); err != nil {
+		log.Errorf(
+			"action: write_bet_number | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	return buffer.Bytes(), nil
+}
+
+func encodeBatchMessage(batchBuffer []byte, numBets int) ([]byte, error) {
+	// Crear un nuevo buffer para construir el mensaje final
+	buffer := new(bytes.Buffer)
+
+	// Calcular longitud total del mensaje (4 bytes fijos + longitud del contenido de batchBuffer)
+	totalLength := 4 + len(batchBuffer) // 2 bytes para la longitud total + 1 byte para el tipo de mensaje + 1 byte para el número de apuestas
+
+	// Escribir longitud total del mensaje
+	if err := binary.Write(buffer, binary.BigEndian, uint16(totalLength)); err != nil {
+		log.Errorf(
+			"action: write_total_length | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Escribir tipo de mensaje (MSG_TYPE_APUESTA)
+	if err := buffer.WriteByte(MSG_TYPE_APUESTA); err != nil {
+		log.Errorf(
+			"action: write_message_type | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Escribir cantidad de apuestas en el batch
+	if err := buffer.WriteByte(uint8(numBets)); err != nil {
+		log.Errorf(
+			"action: write_bet_count | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Escribir el contenido ya codificado en batchBuffer después de los encabezados
+	if _, err := buffer.Write(batchBuffer); err != nil {
+		log.Errorf(
+			"action: write_batch_buffer | result: fail | error: %v",
+			err,
+		)
+		return nil, err
+	}
+
+	// Devolver los bytes del mensaje completo
+	return buffer.Bytes(), nil
+}
+
+
 
 // DecodeConfirmationMessage decodifica un mensaje de confirmación recibido desde el servidor
 func DecodeConfirmationMessage(data []byte) (bool, error) {
