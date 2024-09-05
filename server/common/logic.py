@@ -1,51 +1,63 @@
 # common/application/app_logic.py
 
 import logging
+import threading
+import time
 from common.utils import Bet, store_bets
 from common.messages import (
     decode_message,
     encode_confirmation_message
 )
 
-def procesar_mensaje(data):
-    """
-    Procesa el mensaje recibido, maneja la lógica de negocio y retorna respuesta
-    """
-    try:
-        decoded_message = decode_message(data)
+from common.socket_handler import recv_msg, send_msg
 
+class AgencyThread(threading.Thread):
+    def __init__(self, agency_socket, store_lock, barrier, conexiones_por_agencia, conexiones_lock):
+        super().__init__()
+        self.agency_socket = agency_socket
+        self.store_lock = store_lock
+        self.barrier = barrier
+        self.conexiones_por_agencia = conexiones_por_agencia
+        self.conexiones_lock = conexiones_lock
+        self.agency_id = None  # Para guardar el ID de la agencia cuando llegue el mensaje de finalización
 
-        if isinstance(decoded_message, list) and all(isinstance(bet, Bet) for bet in decoded_message):
-            # Manejo de mensaje de tipo apuesta
-            store_bets(decoded_message)  # Almacena las apuestas recibidas
-            # for bet in decoded_message:
-                # logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}")
-            response = encode_confirmation_message(success=True)
-            logging.info(f"action: batch_almacenado | result: success")
-            return response
-        
-        elif decoded_message.get("tipo") == "finalizacion":
-            # Manejo de mensaje de tipo finalización
-            agency_id = decoded_message["agency_id"]
-            logging.info(f"action: procesar_finalizacion | result: success | agency_id: {agency_id}")
-            # Respuesta opcional, por ejemplo, una confirmación
-            response = encode_confirmation_message(success=True)
-            return response
+    def run(self):
+        """
+        Lógica del hilo de agencia.
+        Recibe mensajes, procesa, y espera en la barrera cuando recibe el mensaje de finalización.
+        """
+        try:
+            while True:
+                data = recv_msg(self.agency_socket)  # Recibir mensaje
+                if not data:
+                    logging.error("NO LLEGO NADA EN EL HILO PRINCIPAL")
+                    break
+                
+                # Procesar el mensaje
+                decoded_message = decode_message(data)
 
-        elif decoded_message.get("tipo") == "consulta":
-            # Manejo de mensaje de tipo consulta de ganadores
-            agency_id = decoded_message["agency_id"]
-            logging.info(f"action: procesar_consulta | result: success | agency_id: {agency_id}")
-            # Aquí podrías implementar lógica para enviar una lista de ganadores
-            response = encode_confirmation_message(success=True)
+                if isinstance(decoded_message, list) and all(isinstance(bet, Bet) for bet in decoded_message):
+                    # Almacenar las apuestas recibidas
+                    with self.store_lock:
+                        store_bets(decoded_message)
+                    response = encode_confirmation_message(success=True)
+                    logging.info("Apuestas almacenadas exitosamente.")
+                    send_msg(self.agency_socket, response)
 
-        else:
-            # Tipo de mensaje desconocido
-            logging.error("action: procesar_mensaje | result: fail | error: Tipo de mensaje desconocido")
-            response = encode_confirmation_message(success=False)
-            return response
+                elif decoded_message.get("tipo") == "finalizacion":
+                    self.agency_id = decoded_message["agency_id"]
+                    with self.conexiones_lock:
+                        self.conexiones_por_agencia[self.agency_id] = self.agency_socket
+                    logging.info(f"Agencia {self.agency_id} ha enviado notificación de finalización.")
 
-    except Exception as e:
-        logging.error(f"action: procesar_mensaje | result: fail | error: {e}")
-        response = encode_confirmation_message(success=False)
-        return response
+                    time.sleep(5)
+                    # Esperar en la barrera
+                    self.barrier.wait()  # El hilo de la agencia espera hasta que todos lleguen
+                    break  # Salir del ciclo tras la notificación y espera
+
+                else:
+                    # Tipo de mensaje desconocido
+                    logging.error("action: procesar_mensaje | result: fail | error: Tipo de mensaje desconocido")
+
+        except Exception as e:
+            logging.error(f"Error en la conexión con la agencia: {e}")
